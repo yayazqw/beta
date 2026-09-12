@@ -8307,7 +8307,7 @@ do -- Visuals
     local OreScanTick = 0
     local function ScanOres()
         local now = os.clock()
-        if now - OreScanTick < 0.5 and #OreScanCache > 0 then return OreScanCache end
+        if now - OreScanTick < 1 and #OreScanCache > 0 then return OreScanCache end
         OreScanTick = now
         local out = {}
         local function push(m, name, col)
@@ -8372,28 +8372,64 @@ do -- Visuals
                 end
             end
         end
-        -- 2) Модели с Meshes/rock в корне Workspace (любое имя, не персонажи)
+        -- 2) Модели с Meshes/rock (корень Workspace + папка World, любое имя, не персонажи)
+        local function ClassifyRockModel(ch)
+            local rock = nil
+            pcall(function() rock = ch:FindFirstChild("Meshes/rock", true) end)
+            if not rock then return end
+            local oreName = "Stone Ore"
+            local col = TridentSettings.Ores.ColorStone
+            pcall(function()
+                for _, v2 in ch:GetChildren() do
+                    if v2:IsA("MeshPart") then
+                        if v2.BrickColor == BrickColor.new(352) then
+                            oreName = "Iron Ore" col = TridentSettings.Ores.ColorIron
+                        elseif v2.BrickColor == BrickColor.new(1001) then
+                            oreName = "Nitrate Ore" col = TridentSettings.Ores.ColorNitrate
+                        end
+                    end
+                end
+                if #ch:GetChildren() == 1 then oreName = "Stone Ore" col = TridentSettings.Ores.ColorStone end
+            end)
+            push(ch, oreName, col)
+        end
+        local function IsCharLike(ch)
+            return ch:FindFirstChild("HumanoidRootPart") ~= nil or ch:FindFirstChild("Humanoid") ~= nil
+        end
         for _, ch in Workspace:GetChildren() do
-            if ch:IsA("Model") and not ch:FindFirstChild("HumanoidRootPart") and not ch:FindFirstChild("Humanoid") then
-                local rock = nil
-                pcall(function() rock = ch:FindFirstChild("Meshes/rock", true) end)
-                if rock then
-                    local oreName = "Stone Ore"
-                    local col = TridentSettings.Ores.ColorStone
-                    local okc = pcall(function()
-                        for _, v2 in ch:GetChildren() do
-                            if v2:IsA("MeshPart") then
-                                if v2.BrickColor == BrickColor.new(352) then
-                                    oreName = "Iron Ore" col = TridentSettings.Ores.ColorIron
-                                elseif v2.BrickColor == BrickColor.new(1001) then
-                                    oreName = "Nitrate Ore" col = TridentSettings.Ores.ColorNitrate
+            if ch:IsA("Model") and not IsCharLike(ch) then
+                ClassifyRockModel(ch)
+            end
+        end
+        do -- World: модели напрямую и на 1 уровень вглубь
+            local w = nil
+            pcall(function() w = Workspace:FindFirstChild("World") end)
+            if w then
+                pcall(function()
+                    for _, ch in w:GetChildren() do
+                        if ch:IsA("Model") then
+                            if not IsCharLike(ch) then
+                                local before = #out
+                                ClassifyRockModel(ch)
+                                if #out == before then
+                                    local kind, col = OreKindFromName(ch.Name)
+                                    if kind then push(ch, kind, col) end
+                                end
+                            end
+                        elseif ch:IsA("Folder") then
+                            for _, m in ch:GetChildren() do
+                                if m:IsA("Model") and not IsCharLike(m) then
+                                    local before = #out
+                                    ClassifyRockModel(m)
+                                    if #out == before then
+                                        local kind, col = OreKindFromName(m.Name)
+                                        if kind then push(m, kind, col) end
+                                    end
                                 end
                             end
                         end
-                        if #ch:GetChildren() == 1 then oreName = "Stone Ore" col = TridentSettings.Ores.ColorStone end
-                    end)
-                    push(ch, oreName, col)
-                end
+                    end
+                end)
             end
         end
         -- 3) Папки руд в корне Workspace (Ores/Resources/Rocks/...) + свободный поиск моделей с "rock/ore"
@@ -8429,7 +8465,12 @@ do -- Visuals
         return out
     end
 
+    local NPCCache = {}
+    local NPCScanTick = 0
     local function GetNPCModels()
+        local now = os.clock()
+        if now - NPCScanTick < 1 and #NPCCache > 0 then return NPCCache end
+        NPCScanTick = now
         local out = {}
         local entOk, ent = pcall(function() return Workspace:FindFirstChild("Entities") end)
         local function consider(m)
@@ -8474,6 +8515,21 @@ do -- Visuals
                 end
             end
         end
+        -- папка World: модели напрямую и на 1 уровень вглубь
+        do
+            local w = nil
+            pcall(function() w = Workspace:FindFirstChild("World") end)
+            if w then
+                pcall(function()
+                    for _, ch in w:GetChildren() do
+                        if ch:IsA("Model") then consider(ch)
+                        elseif ch:IsA("Folder") then
+                            for _, m in ch:GetChildren() do consider(m) end
+                        end
+                    end
+                end)
+            end
+        end
         -- fallback: workspace животные вне Players
         if #out == 0 then
             for _, m in Workspace:GetChildren() do
@@ -8490,6 +8546,7 @@ do -- Visuals
                 end
             end
         end
+        NPCCache = out
         return out
     end
 
@@ -9153,6 +9210,53 @@ do -- Visuals
                 local u = m:FindFirstChildWhichIsA("UnionOperation", true)
                 return m.Name .. " | union=" .. tostring(u and u.Color) .. " | " .. m:GetFullName()
             end)
+        end)
+        pcall(function()
+            add("== World folder ==")
+            local w = Workspace:FindFirstChild("World")
+            if w then
+                for _, ch in w:GetChildren() do add(ch.ClassName .. " | World/" .. ch.Name) end
+            else add("World: MISSING") end
+            add("== Const folder ==")
+            local c = Workspace:FindFirstChild("Const")
+            if c then
+                for _, ch in c:GetChildren() do add(ch.ClassName .. " | Const/" .. ch.Name) end
+            end
+        end)
+        pcall(function()
+            local cats = { rock = {}, union = {}, hrp = {}, other = {} }
+            local counts = { rock = 0, union = 0, hrp = 0, other = 0 }
+            for _, m in Workspace:GetChildren() do
+                if m:IsA("Model") then
+                    local hasHRP, hasRock, hasU = false, false, false
+                    pcall(function()
+                        hasHRP = m:FindFirstChild("HumanoidRootPart") ~= nil
+                        hasRock = m:FindFirstChild("Meshes/rock", true) ~= nil
+                        hasU = m:FindFirstChildWhichIsA("UnionOperation", true) ~= nil
+                    end)
+                    local cat = hasHRP and "hrp" or (hasRock and "rock" or (hasU and "union" or "other"))
+                    counts[cat] += 1
+                    if #cats[cat] < 6 then table.insert(cats[cat], m) end
+                end
+            end
+            add(("== root cats: hrp=%d rock=%d union=%d other=%d =="):format(counts.hrp, counts.rock, counts.union, counts.other))
+            for cat, list in cats do
+                for _, m in list do
+                    local kids = {}
+                    pcall(function()
+                        for _, k in m:GetChildren() do
+                            local extra = ""
+                            if k:IsA("MeshPart") then extra = "#BC" .. tostring(k.BrickColor.Number) end
+                            if k:IsA("UnionOperation") then extra = "#U" .. tostring(math.floor(k.Color.R * 255)) end
+                            table.insert(kids, k.Name .. "(" .. k.ClassName .. extra .. ")")
+                            if #kids >= 10 then table.insert(kids, "...") break end
+                        end
+                    end)
+                    local prompt = ""
+                    pcall(function() if m:FindFirstChildWhichIsA("ProximityPrompt", true) then prompt = " PROMPT" end end)
+                    add("[" .. cat .. "] " .. m.Name .. prompt .. " kids: " .. table.concat(kids, ", "))
+                end
+            end
         end)
         local text = table.concat(lines, "\n")
         getgenv().TridentLastScan = text
