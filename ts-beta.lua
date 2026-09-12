@@ -970,7 +970,7 @@ do -- Library
         ConfigFolder = "gamesense/Configs",
         UI = {
             Name = "gamesense",
-            CloseBind = Enum.KeyCode.Insert,
+            CloseBind = Enum.KeyCode.RightShift,
             SectionResizeIncrements = 1,
             WatermarkRefreshRate = 1,
             MainUI = nil,
@@ -5768,7 +5768,7 @@ do -- Library
             Size = UDim2.new(0, 700, 0, 612),
             MinResize = UDim2.new(0, 500, 0, 400),
             MaxResize = UDim2.new(0, 10000, 0, 10000),
-            CloseBind = Enum.KeyCode.Insert,
+            CloseBind = Enum.KeyCode.RightShift,
         }, Options or {})
         --
         local Window = {
@@ -8121,7 +8121,7 @@ do -- Library
     end
 end
 --
-local Window = Library:Window({CloseBind = Enum.KeyCode.Insert})
+local Window = Library:Window({CloseBind = Enum.KeyCode.RightShift})
 local Rage = Window:CreateTab({Icon = "rbxassetid://18248771514"})
 local AntiAim = Window:CreateTab({Icon = "rbxassetid://15453313321"})
 local Aimbot = Window:CreateTab({Icon = "rbxassetid://15453335745"})
@@ -8530,15 +8530,15 @@ do -- Visuals
                 end)
             end
         end
-        -- fallback: workspace животные вне Players
+        -- fallback: корневые модели с именами NPC (игроки все называются "Model")
         if #out == 0 then
             for _, m in Workspace:GetChildren() do
-                if m:IsA("Model") and m:FindFirstChild("HumanoidRootPart") and m:FindFirstChild("Humanoid") then
-                    if m.Name ~= Client.Name and m ~= Client.Character then
-                        local pf = Workspace:FindFirstChild("Players")
-                        if not (pf and m.Parent == pf) then
-                            -- эвристика: NPC обычно не "Model" и без Meshes/rock
-                            if not m:FindFirstChild("Meshes/rock", true) then
+                if m:IsA("Model") and m.Name ~= "Model" then
+                    if m:FindFirstChild("HumanoidRootPart") and (m:FindFirstChild("Head") or m:FindFirstChild("Humanoid")) then
+                        if m ~= Client.Character then
+                            local rockHit = false
+                            pcall(function() rockHit = m:FindFirstChild("Meshes/rock", true) ~= nil end)
+                            if not rockHit then
                                 table.insert(out, m)
                             end
                         end
@@ -9257,6 +9257,77 @@ do -- Visuals
                     add("[" .. cat .. "] " .. m.Name .. prompt .. " kids: " .. table.concat(kids, ", "))
                 end
             end
+            add("== World/POIs ==")
+            pcall(function()
+                local pois = Workspace:FindFirstChild("World")
+                pois = pois and pois:FindFirstChild("POIs")
+                if pois then
+                    for _, ch in pois:GetChildren() do
+                        if ch:IsA("Folder") then
+                            add("Folder | POIs/" .. ch.Name .. " [" .. tostring(#ch:GetChildren()) .. " kids]")
+                        else
+                            add(ch.ClassName .. " | POIs/" .. ch.Name)
+                        end
+                    end
+                else add("POIs: MISSING") end
+            end)
+            add("== World/Decoration (first 15) ==")
+            pcall(function()
+                local dec = Workspace:FindFirstChild("World")
+                dec = dec and dec:FindFirstChild("Decoration")
+                if dec then
+                    local n = 0
+                    for _, ch in dec:GetChildren() do
+                        n += 1
+                        if n <= 15 then add(ch.ClassName .. " | Decoration/" .. ch.Name) end
+                    end
+                    add("decoration total: " .. tostring(n))
+                else add("Decoration: MISSING") end
+            end)
+            add("== Const/Ignore + Objects ==")
+            pcall(function()
+                local ig = Workspace:FindFirstChild("Const")
+                ig = ig and ig:FindFirstChild("Ignore")
+                if ig then for _, ch in ig:GetChildren() do add(ch.ClassName .. " | Ignore/" .. ch.Name) end end
+                local ob = Workspace:FindFirstChild("Const")
+                ob = ob and ob:FindFirstChild("Objects")
+                if ob then
+                    local n = 0
+                    for _, ch in ob:GetChildren() do
+                        n += 1
+                        if n <= 15 then add(ch.ClassName .. " | Objects/" .. ch.Name) end
+                    end
+                    add("objects total: " .. tostring(n))
+                end
+            end)
+            add("== [other] full dump x3 ==")
+            pcall(function()
+                local n = 0
+                for _, m in Workspace:GetChildren() do
+                    if m:IsA("Model") and m.Name == "Model" then
+                        local isOther = false
+                        pcall(function()
+                            isOther = m:FindFirstChild("HumanoidRootPart") == nil
+                                and m:FindFirstChild("Meshes/rock", true) == nil
+                                and m:FindFirstChildWhichIsA("UnionOperation", true) == nil
+                        end)
+                        if isOther then
+                            n += 1
+                            if n <= 3 then
+                                add("-- " .. m:GetFullName())
+                                for _, d in m:GetDescendants() do
+                                    local extra = ""
+                                    if d:IsA("BasePart") then
+                                        extra = " size=" .. tostring(d.Size) .. " col=" .. tostring(math.floor(d.Color.R * 255)) .. "," .. tostring(math.floor(d.Color.G * 255)) .. "," .. tostring(math.floor(d.Color.B * 255))
+                                    end
+                                    add("   " .. d.ClassName .. " | " .. d.Name .. extra)
+                                end
+                            end
+                        end
+                    end
+                end
+                add("other-like total: " .. tostring(n))
+            end)
         end)
         local text = table.concat(lines, "\n")
         getgenv().TridentLastScan = text
@@ -9724,7 +9795,7 @@ do -- Settings
 	local SettingsSection = Settings:Section({Name = "Settings", Side = "Right", Fill = true})
 	--
 	do -- Settings
-		SettingsSection:Label({Message = "Menu key"}):Keybind({Default = Enum.KeyCode.Insert, UseMode = false, Callback = function(Key) Library.UI.CloseBind = Key end})
+		SettingsSection:Label({Message = "Menu key"}):Keybind({Default = Enum.KeyCode.RightShift, UseMode = false, Callback = function(Key) Library.UI.CloseBind = Key end})
 		SettingsSection:Label({Message = "Menu color"}):ColorPicker({Default = Library.Theme.Default.Accent, Callback = function(Color)
 			Library:UpdateColor("Accent", Color)
 			Library:UpdateColor("SecondAccent", Color3.fromRGB(math.max(math.floor(Color.R * 255) - 12, 0), math.max(math.floor(Color.G * 255) - 12, 0), math.max(math.floor(Color.B * 255) - 12, 0)))
