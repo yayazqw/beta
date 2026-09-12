@@ -8344,31 +8344,39 @@ do -- Visuals
                         local hit = false
                         for _, k in keywords do if string.find(ln, k, 1, true) then hit = true break end end
                         if hit and not map[sub.Name] then
+                            local fkind, fcol = OreKindFromName(sub.Name)
                             for _, m in sub:GetChildren() do
                                 if m:IsA("Model") then
                                     local kind, col = OreKindFromName(m.Name)
-                                    push(m, kind or m.Name, col or Color3.fromRGB(200, 200, 200))
+                                    push(m, kind or fkind or "Stone Ore", col or fcol or Color3.fromRGB(200, 200, 200))
                                 end
                             end
                         end
                     end
                 end
             end
-            -- generic: любые модели с PrimaryPart внутри Entities (руды/лут)
+            -- generic: любые немаркированные модели внутри Entities (PrimaryPart не требуем)
             if #out == 0 then
                 for _, d in ent:GetDescendants() do
-                    if d:IsA("Model") and d.PrimaryPart then
-                        if not d:FindFirstChild("HumanoidRootPart") then
-                            push(d, d.Name, Color3.fromRGB(200, 200, 200))
+                    if d:IsA("Model") then
+                        if not d:FindFirstChild("HumanoidRootPart") and not d:FindFirstChild("Humanoid") then
+                            local kind, col = OreKindFromName(d.Name)
+                            local rockHit = false
+                            pcall(function() rockHit = d:FindFirstChild("Meshes/rock", true) ~= nil end)
+                            if kind or rockHit then
+                                local ok = pcall(function() d:GetPivot() end)
+                                if ok then push(d, kind or "Stone Ore", col or TridentSettings.Ores.ColorStone) end
+                            end
                         end
                     end
                 end
             end
         end
-        -- 2) Старый формат: Model + Meshes/rock в корне Workspace
+        -- 2) Модели с Meshes/rock в корне Workspace (любое имя, не персонажи)
         for _, ch in Workspace:GetChildren() do
-            if ch:IsA("Model") and ch.Name == "Model" then
-                local rock = ch:FindFirstChild("Meshes/rock", true)
+            if ch:IsA("Model") and not ch:FindFirstChild("HumanoidRootPart") and not ch:FindFirstChild("Humanoid") then
+                local rock = nil
+                pcall(function() rock = ch:FindFirstChild("Meshes/rock", true) end)
                 if rock then
                     local oreName = "Stone Ore"
                     local col = TridentSettings.Ores.ColorStone
@@ -8397,10 +8405,11 @@ do -- Visuals
                     local hit = false
                     for _, k in keywords do if string.find(ln, k, 1, true) then hit = true break end end
                     if hit then
+                        local fkind, fcol = OreKindFromName(ch.Name)
                         for _, m in ch:GetChildren() do
                             if m:IsA("Model") then
                                 local kind, col = OreKindFromName(m.Name)
-                                push(m, kind or m.Name, col or Color3.fromRGB(200, 200, 200))
+                                push(m, kind or fkind or "Stone Ore", col or fcol or Color3.fromRGB(200, 200, 200))
                             end
                         end
                     end
@@ -8598,14 +8607,25 @@ do -- Visuals
             if not m.Parent then return end
             if m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Humanoid") then return end
             if m:FindFirstChild("Meshes/rock", true) then return end
-            local hasUnion, hasPrompt = false, false
-            pcall(function() hasUnion = m:FindFirstChildWhichIsA("UnionOperation", true) ~= nil end)
-            pcall(function() hasPrompt = m:FindFirstChildWhichIsA("ProximityPrompt", true) ~= nil end)
             local nm = string.lower(m.Name)
+            -- двери/ворота — никогда не рюкзаки
+            for _, w in { "door", "gate", "hatch", "shutter", "doorway", "entrance" } do
+                if string.find(nm, w, 1, true) then return end
+            end
+            -- сигнал трупа из k.mn-скриптов: UnionOperation цвета 205,205,205
+            local hasUnion205 = false
+            pcall(function()
+                for _, u in m:GetDescendants() do
+                    if u:IsA("UnionOperation") and u.Color == Color3.fromRGB(205, 205, 205) then
+                        hasUnion205 = true break
+                    end
+                end
+            end)
             local nameHit = string.find(nm, "bag", 1, true) or string.find(nm, "backpack", 1, true)
                 or string.find(nm, "corpse", 1, true) or string.find(nm, "body", 1, true)
-                or string.find(nm, "loot", 1, true)
-            if hasUnion or nameHit or hasPrompt then
+                or string.find(nm, "loot", 1, true) or string.find(nm, "death", 1, true)
+                or string.find(nm, "pouch", 1, true) or string.find(nm, "sack", 1, true)
+            if hasUnion205 or nameHit then
                 local ok = pcall(function() m:GetPivot() end)
                 if ok then table.insert(out, m) end
             end
@@ -9077,6 +9097,68 @@ do -- Visuals
     end})
     MiscSec:Button({Name = "Clear ESP", Callback = function()
         HideAllESP()
+    end})
+    MiscSec:Button({Name = "Scan map (debug)", Callback = function()
+        local lines = {}
+        local function add(s) table.insert(lines, s) end
+        pcall(function()
+            add("== workspace children (" .. tostring(#Workspace:GetChildren()) .. ") ==")
+            for _, ch in Workspace:GetChildren() do
+                local extra = ""
+                pcall(function()
+                    if ch:IsA("Folder") then extra = " [" .. tostring(#ch:GetChildren()) .. " kids]" end
+                end)
+                add(ch.ClassName .. " | " .. ch.Name .. extra)
+            end
+        end)
+        pcall(function()
+            local ent = Workspace:FindFirstChild("Entities")
+            if ent then
+                add("== Entities children ==")
+                for _, ch in ent:GetChildren() do
+                    add(ch.ClassName .. " | Entities/" .. ch.Name)
+                end
+            else
+                add("== Entities: MISSING ==")
+            end
+        end)
+        pcall(function()
+            local pf = Workspace:FindFirstChild("Players")
+            if pf then
+                local names = {}
+                for _, m in pf:GetChildren() do table.insert(names, m.Name) end
+                add("== Players(" .. tostring(#names) .. "): " .. table.concat(names, ", ") .. " ==")
+            else
+                add("== Players folder: MISSING ==")
+            end
+        end)
+        local function sample(title, list, fmt)
+            add("== " .. title .. ": " .. tostring(#list) .. " ==")
+            for i = 1, math.min(#list, 12) do
+                local ok, s = pcall(fmt, list[i])
+                if ok then add("  " .. s) end
+            end
+        end
+        pcall(function()
+            sample("ores", ScanOres(), function(info) return info.oreName .. " | " .. info.model:GetFullName() end)
+        end)
+        pcall(function()
+            sample("oreParts", ScanOreParts(), function(pi) return pi.oreName .. " | " .. pi.part:GetFullName() end)
+        end)
+        pcall(function()
+            sample("npc", GetNPCModels(), function(m) return m:GetFullName() end)
+        end)
+        pcall(function()
+            sample("backpacks", GetBackpackModels(), function(m)
+                local u = m:FindFirstChildWhichIsA("UnionOperation", true)
+                return m.Name .. " | union=" .. tostring(u and u.Color) .. " | " .. m:GetFullName()
+            end)
+        end)
+        local text = table.concat(lines, "\n")
+        getgenv().TridentLastScan = text
+        pcall(function() writefile("trident_scan.txt", text) end)
+        pcall(function() setclipboard(text) end)
+        Library:Notify({Message = "Scan готов: trident_scan.txt + буфер. Пришли мне содержимое.", Delay = 6})
     end})
     MiscSec:Button({Name = "Fix Drawing (actor)", Callback = function()
         local src = getgenv().TRIDENT_ACTOR_SRC
