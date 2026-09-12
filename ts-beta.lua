@@ -35,6 +35,11 @@ local TridentSettings = getgenv().TridentSettings or {
         MaxDistance = 1500,
         Color = Color3.fromRGB(255, 255, 255),
         SleeperColor = Color3.fromRGB(160, 160, 160),
+        Chams = false,
+        ChamsColor = Color3.fromRGB(255, 0, 0),
+        ChamsFill = 0.5,
+        Skeleton = false,
+        SkeletonColor = Color3.fromRGB(0, 255, 0),
     },
     Ores = {
         Enabled = false,
@@ -57,12 +62,54 @@ local TridentSettings = getgenv().TridentSettings or {
         MaxDistance = 1200,
         Color = Color3.fromRGB(255, 90, 90),
     },
+    Backpacks = {
+        Enabled = false,
+        Box = true,
+        Name = true,
+        Distance = true,
+        MaxDistance = 1200,
+        Color = Color3.fromRGB(0, 255, 255),
+    },
     Misc = {
         UseHighlightFallback = true,
         HideWhenMenuClosed = false,
     },
 }
 getgenv().TridentSettings = TridentSettings
+
+-- // defaults-merge: добиваем новые поля тем, у кого настройки уже закешированы в getgenv
+do
+    local function fill(t, defaults)
+        for k, v in defaults do
+            if t[k] == nil then
+                if typeof(v) == "Color3" then
+                    t[k] = Color3.new(v.R, v.G, v.B)
+                else
+                    t[k] = v
+                end
+            end
+        end
+    end
+    TridentSettings.Players = TridentSettings.Players or {}
+    TridentSettings.Ores = TridentSettings.Ores or {}
+    TridentSettings.NPC = TridentSettings.NPC or {}
+    TridentSettings.Backpacks = TridentSettings.Backpacks or {}
+    TridentSettings.Misc = TridentSettings.Misc or {}
+    fill(TridentSettings.Players, { Enabled = false, Box = true, Name = true, Distance = true, Weapon = true, ShowSleepers = false, ShowLocal = false, MaxDistance = 1500, Chams = false, ChamsFill = 0.5, Skeleton = false })
+    fill(TridentSettings.Ores, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200, Iron = true, Nitrate = true, Stone = true })
+    fill(TridentSettings.NPC, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200 })
+    fill(TridentSettings.Backpacks, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200 })
+    fill(TridentSettings.Misc, { UseHighlightFallback = true, HideWhenMenuClosed = false })
+    if typeof(TridentSettings.Players.Color) ~= "Color3" then TridentSettings.Players.Color = Color3.fromRGB(255, 255, 255) end
+    if typeof(TridentSettings.Players.SleeperColor) ~= "Color3" then TridentSettings.Players.SleeperColor = Color3.fromRGB(160, 160, 160) end
+    if typeof(TridentSettings.Players.ChamsColor) ~= "Color3" then TridentSettings.Players.ChamsColor = Color3.fromRGB(255, 0, 0) end
+    if typeof(TridentSettings.Players.SkeletonColor) ~= "Color3" then TridentSettings.Players.SkeletonColor = Color3.fromRGB(0, 255, 0) end
+    if typeof(TridentSettings.Ores.ColorIron) ~= "Color3" then TridentSettings.Ores.ColorIron = Color3.fromRGB(255, 170, 60) end
+    if typeof(TridentSettings.Ores.ColorNitrate) ~= "Color3" then TridentSettings.Ores.ColorNitrate = Color3.fromRGB(240, 240, 240) end
+    if typeof(TridentSettings.Ores.ColorStone) ~= "Color3" then TridentSettings.Ores.ColorStone = Color3.fromRGB(150, 150, 150) end
+    if typeof(TridentSettings.NPC.Color) ~= "Color3" then TridentSettings.NPC.Color = Color3.fromRGB(255, 90, 90) end
+    if typeof(TridentSettings.Backpacks.Color) ~= "Color3" then TridentSettings.Backpacks.Color = Color3.fromRGB(0, 255, 255) end
+end
 
 -- // ---- Actor Drawing Fix : SERIAL SIDE (safe) ----
 do
@@ -504,6 +551,7 @@ do
             end));
 
             entityESP.entityCache[entity] = self;
+            return self;
       end;
       function entityESP:remove()
             entityESP.entityCache[self.entity] = nil;
@@ -8248,6 +8296,13 @@ do -- Visuals
         return out
     end
 
+    local function OreKindFromName(nm)
+        nm = string.lower(nm)
+        if string.find(nm, "iron", 1, true) then return "Iron Ore", TridentSettings.Ores.ColorIron end
+        if string.find(nm, "nitra", 1, true) then return "Nitrate Ore", TridentSettings.Ores.ColorNitrate end
+        if string.find(nm, "stone", 1, true) or string.find(nm, "cobble", 1, true) then return "Stone Ore", TridentSettings.Ores.ColorStone end
+        return nil, nil
+    end
     local OreScanCache = {}
     local OreScanTick = 0
     local function ScanOres()
@@ -8277,6 +8332,25 @@ do -- Visuals
                 if f then
                     for _, m in f:GetChildren() do
                         if m:IsA("Model") then push(m, info[1], info[2]) end
+                    end
+                end
+            end
+            -- loose: папки руд с любым названием внутри Entities
+            do
+                local keywords = { "ore", "rock", "stone", "iron", "nitra", "cobble", "node", "deposit", "mine" }
+                for _, sub in ent:GetChildren() do
+                    if sub:IsA("Folder") then
+                        local ln = string.lower(sub.Name)
+                        local hit = false
+                        for _, k in keywords do if string.find(ln, k, 1, true) then hit = true break end end
+                        if hit and not map[sub.Name] then
+                            for _, m in sub:GetChildren() do
+                                if m:IsA("Model") then
+                                    local kind, col = OreKindFromName(m.Name)
+                                    push(m, kind or m.Name, col or Color3.fromRGB(200, 200, 200))
+                                end
+                            end
+                        end
                     end
                 end
             end
@@ -8314,8 +8388,34 @@ do -- Visuals
                 end
             end
         end
-        -- 3) Workspace.Resources (части)
-        -- Ресурсы-парты не поддерживаются entityESP (нужен Model), пропускаем чтобы не крашить lvl7
+        -- 3) Папки руд в корне Workspace (Ores/Resources/Rocks/...) + свободный поиск моделей с "rock/ore"
+        do
+            local keywords = { "ore", "rock", "stone", "iron", "nitra", "cobble", "node", "deposit", "mine" }
+            for _, ch in Workspace:GetChildren() do
+                if ch:IsA("Folder") then
+                    local ln = string.lower(ch.Name)
+                    local hit = false
+                    for _, k in keywords do if string.find(ln, k, 1, true) then hit = true break end end
+                    if hit then
+                        for _, m in ch:GetChildren() do
+                            if m:IsA("Model") then
+                                local kind, col = OreKindFromName(m.Name)
+                                push(m, kind or m.Name, col or Color3.fromRGB(200, 200, 200))
+                            end
+                        end
+                    end
+                elseif ch:IsA("Model") and ch.Name ~= "Model" then
+                    local ln = string.lower(ch.Name)
+                    for _, k in { "ore", "iron", "nitra", "cobble" } do
+                        if string.find(ln, k, 1, true) and not ch:FindFirstChild("HumanoidRootPart") then
+                            local kind, col = OreKindFromName(ch.Name)
+                            if kind then push(ch, kind, col) end
+                            break
+                        end
+                    end
+                end
+            end
+        end
         OreScanCache = out
         return out
     end
@@ -8325,7 +8425,8 @@ do -- Visuals
         local entOk, ent = pcall(function() return Workspace:FindFirstChild("Entities") end)
         local function consider(m)
             if not m:IsA("Model") then return end
-            if m:FindFirstChild("HumanoidRootPart") and m:FindFirstChild("Head") then
+            if not m:FindFirstChild("HumanoidRootPart") then return end
+            if not (m:FindFirstChild("Head") or m:FindFirstChild("Humanoid")) then return end
                 -- исключить игроков (они в Workspace.Players)
                 local inPlayers = false
                 pcall(function()
@@ -8333,7 +8434,6 @@ do -- Visuals
                     if pf and m.Parent == pf then inPlayers = true end
                 end)
                 if not inPlayers then table.insert(out, m) end
-            end
         end
         if entOk and ent then
             for _, d in ent:GetChildren() do
@@ -8344,6 +8444,23 @@ do -- Visuals
                             -- папки руд пропускаем (у руд нет HRP, так что consider сам отсеет)
                             consider(m)
                         end
+                    end
+                end
+            end
+        end
+        -- папки NPC с любым названием (NPC/NPCs/Animals/Mobs/Bots/...)
+        do
+            local keywords = { "npc", "animal", "mob", "bot", "zombie", "bandit", "mutant", "creature", "enemy", "enemies" }
+            local function scanFolder(f)
+                for _, m in f:GetChildren() do
+                    if m:IsA("Model") then consider(m) end
+                end
+            end
+            for _, ch in Workspace:GetChildren() do
+                if ch:IsA("Folder") then
+                    local ln = string.lower(ch.Name)
+                    for _, k in keywords do
+                        if string.find(ln, k, 1, true) then scanFolder(ch) break end
                     end
                 end
             end
@@ -8453,6 +8570,277 @@ do -- Visuals
         return f
     end
 
+    -- // ---------- Backpacks (лут после смерти) : corpse/bag-модели в корне Workspace ----------
+    local FakeBackpackByModel = {}
+    local function GetFakeBackpack(model, label)
+        local f = FakeBackpackByModel[model]
+        if not f then
+            f = { model = model, type = label or "Backpack" }
+            FakeBackpackByModel[model] = f
+            pcall(function()
+                model.AncestryChanged:Connect(function(_, parent)
+                    if parent == nil then FakeBackpackByModel[model] = nil end
+                end)
+            end)
+        end
+        f.type = label or "Backpack"
+        return f
+    end
+    local BackpackScanCache = {}
+    local BackpackScanTick = 0
+    local function GetBackpackModels()
+        local now = os.clock()
+        if now - BackpackScanTick < 1 and #BackpackScanCache > 0 then return BackpackScanCache end
+        BackpackScanTick = now
+        local out = {}
+        local function consider(m)
+            if not m:IsA("Model") then return end
+            if not m.Parent then return end
+            if m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Humanoid") then return end
+            if m:FindFirstChild("Meshes/rock", true) then return end
+            local hasUnion, hasPrompt = false, false
+            pcall(function() hasUnion = m:FindFirstChildWhichIsA("UnionOperation", true) ~= nil end)
+            pcall(function() hasPrompt = m:FindFirstChildWhichIsA("ProximityPrompt", true) ~= nil end)
+            local nm = string.lower(m.Name)
+            local nameHit = string.find(nm, "bag", 1, true) or string.find(nm, "backpack", 1, true)
+                or string.find(nm, "corpse", 1, true) or string.find(nm, "body", 1, true)
+                or string.find(nm, "loot", 1, true)
+            if hasUnion or nameHit or hasPrompt then
+                local ok = pcall(function() m:GetPivot() end)
+                if ok then table.insert(out, m) end
+            end
+        end
+        pcall(function()
+            for _, ch in Workspace:GetChildren() do
+                if ch:IsA("Model") then consider(ch) end
+            end
+        end)
+        BackpackScanCache = out
+        return out
+    end
+
+    -- // ---------- Руды-части (если руда это Part/MeshPart, а не Model) ----------
+    local OrePartScanCache = {}
+    local OrePartScanTick = 0
+    local function ScanOreParts()
+        local now = os.clock()
+        if now - OrePartScanTick < 1 and #OrePartScanCache > 0 then return OrePartScanCache end
+        OrePartScanTick = now
+        local out = {}
+        local function consider(p)
+            if not p.Parent then return end
+            local kind, col = OreKindFromName(p.Name)
+            if kind then table.insert(out, { part = p, oreName = kind, color = col }) end
+        end
+        pcall(function()
+            for _, ch in Workspace:GetChildren() do
+                if ch:IsA("BasePart") then consider(ch) end
+            end
+            local ent = Workspace:FindFirstChild("Entities")
+            if ent then
+                for _, d in ent:GetDescendants() do
+                    if d:IsA("BasePart") then
+                        local par = d.Parent
+                        if not (par and par:IsA("Model")) then consider(d) end
+                    end
+                end
+            end
+        end)
+        OrePartScanCache = out
+        return out
+    end
+    local PartTextPool = {}
+    local function HideAllPartTexts()
+        for _, t in PartTextPool do pcall(function() t.Visible = false end) end
+    end
+    local function ShowPartText(part, label, color)
+        local t = PartTextPool[part]
+        if not t or not pcall(function() t.Visible = t.Visible end) then
+            local ok, nt = pcall(function()
+                local x = Drawing.new("Text")
+                x.Visible = false x.Center = true x.Outline = true
+                x.OutlineColor = Color3.new(0, 0, 0)
+                x.Size = 13 x.Font = 1 x.ZIndex = 1
+                return x
+            end)
+            if not (ok and nt) then return end
+            t = nt PartTextPool[part] = t
+            pcall(function()
+                part.AncestryChanged:Connect(function(_, p)
+                    if p == nil then
+                        local tt = PartTextPool[part]
+                        if tt then pcall(function() tt:Remove() end) end
+                        PartTextPool[part] = nil
+                    end
+                end)
+            end)
+        end
+        local pos, onscreen = nil, false
+        pcall(function() pos, onscreen = Camera:WorldToViewportPoint(part.Position) end)
+        if not onscreen or not pos then t.Visible = false return end
+        t.Visible = true t.Text = label t.Color = color
+        t.Position = Vector2.new(pos.X, pos.Y)
+    end
+
+    -- // ---------- Chams (Highlight с заливкой, работает и на lvl7) ----------
+    local ChamsCache = {}
+    local ChamsFolder = nil
+    local function GetChamsFolder()
+        if ChamsFolder and ChamsFolder.Parent then return ChamsFolder end
+        pcall(function()
+            ChamsFolder = CoreGui:FindFirstChild("TridentESP_HL")
+            if not ChamsFolder then
+                ChamsFolder = Instance.new("Folder")
+                ChamsFolder.Name = "TridentESP_HL"
+                ChamsFolder.Parent = CoreGui
+            end
+        end)
+        return ChamsFolder
+    end
+    local function SetChams(model, color, fillTrans, enabled)
+        local folder = GetChamsFolder()
+        if not folder then return end
+        local hl = ChamsCache[model]
+        if not enabled then
+            if hl then pcall(function() hl.Enabled = false end) end
+            return
+        end
+        if not hl or not hl.Parent then
+            local ok, n = pcall(function()
+                local h = Instance.new("Highlight")
+                h.Name = "_TridentESP_Chams"
+                h.Adornee = model
+                h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                h.Parent = folder
+                return h
+            end)
+            if ok and n then hl = n ChamsCache[model] = hl
+                pcall(function()
+                    model.AncestryChanged:Connect(function(_, p)
+                        if p == nil and ChamsCache[model] then
+                            pcall(function() ChamsCache[model]:Destroy() end)
+                            ChamsCache[model] = nil
+                        end
+                    end)
+                end)
+            else return end
+        end
+        pcall(function()
+            hl.Enabled = true hl.Adornee = model
+            hl.FillColor = color hl.OutlineColor = color
+            hl.FillTransparency = fillTrans hl.OutlineTransparency = 0
+        end)
+    end
+    local function ClearAllChams()
+        for _, h in ChamsCache do pcall(function() h.Enabled = false end) end
+    end
+
+    -- // ---------- Skeleton (Drawing Lines, только если Drawing жив) ----------
+    local SkeletonPools = {}
+    local function HideSkeleton(model)
+        local pool = SkeletonPools[model]
+        if pool then for _, l in pool.lines do pcall(function() l.Visible = false end) end end
+    end
+    local function HideAllSkeletons()
+        for m, _ in SkeletonPools do HideSkeleton(m) end
+    end
+    local function HideExtraESP()
+        HideAllSkeletons()
+        HideAllPartTexts()
+        pcall(function()
+            if espLib then
+                for _, e in pairs(espLib.entityESP.entityCache) do
+                    local m = rawget(e.entity, "model")
+                    if m and FakeBackpackByModel[m] then e:hideDrawings() end
+                end
+            end
+        end)
+    end
+    local function DrawSkeleton(model, color)
+        local pool = SkeletonPools[model]
+        if not pool then
+            pool = { lines = {} }
+            SkeletonPools[model] = pool
+            pcall(function()
+                model.AncestryChanged:Connect(function(_, p)
+                    if p == nil then
+                        local pl = SkeletonPools[model]
+                        if pl then for _, l in pl.lines do pcall(function() l:Remove() end) end end
+                        SkeletonPools[model] = nil
+                    end
+                end)
+            end)
+        end
+        local function P(n)
+            local ok, p = pcall(function() return model:FindFirstChild(n) end)
+            if ok then return p end
+        end
+        local pairs = {}
+        local head, hrp = P("Head"), P("HumanoidRootPart")
+        local ut, lt = P("UpperTorso"), P("LowerTorso")
+        if head and ut and lt then
+            local ual, lal, hal = P("UpperArmL"), P("LowerArmL"), P("HandL")
+            local uar, lar, har = P("UpperArmR"), P("LowerArmR"), P("HandR")
+            local ull, lll, fl = P("UpperLegL"), P("LowerLegL"), P("FootL")
+            local ulr, llr, fr = P("UpperLegR"), P("LowerLegR"), P("FootR")
+            pairs = {
+                { head, ut }, { ut, lt },
+                { ut, ual }, { ual, lal }, { lal, hal },
+                { ut, uar }, { uar, lar }, { lar, har },
+                { lt, ull }, { ull, lll }, { lll, fl },
+                { lt, ulr }, { ulr, llr }, { llr, fr },
+            }
+        else
+            local torso = P("Torso")
+            if head and torso then
+                pairs = {
+                    { head, torso },
+                    { torso, P("Left Arm") }, { torso, P("Right Arm") },
+                    { torso, P("Left Leg") }, { torso, P("Right Leg") },
+                }
+            elseif head and hrp then
+                pairs = { { head, hrp } }
+            else
+                HideSkeleton(model)
+                return
+            end
+        end
+        local want = 0
+        for _, pr in pairs do if pr[1] and pr[2] then want += 1 end end
+        while #pool.lines < want do
+            local ok, ln = pcall(function()
+                local l = Drawing.new("Line")
+                l.Visible = false l.Thickness = 1 l.Transparency = 1 l.ZIndex = 2
+                return l
+            end)
+            if ok and ln then table.insert(pool.lines, ln) else break end
+        end
+        local i = 0
+        for _, pr in pairs do
+            local a, b = pr[1], pr[2]
+            if a and b then
+                i += 1
+                local ln = pool.lines[i]
+                if ln then
+                    local ok, ax, ay, ao, bx, by, bo = pcall(function()
+                        local A, Aon = Camera:WorldToViewportPoint(a.Position)
+                        local B, Bon = Camera:WorldToViewportPoint(b.Position)
+                        return A.X, A.Y, Aon, B.X, B.Y, Bon
+                    end)
+                    if ok and (ao or bo) then
+                        pcall(function()
+                            ln.Visible = true ln.Color = color
+                            ln.From = Vector2.new(ax, ay) ln.To = Vector2.new(bx, by)
+                        end)
+                    else
+                        pcall(function() ln.Visible = false end)
+                    end
+                end
+            end
+        end
+        for j = i + 1, #pool.lines do pcall(function() pool.lines[j].Visible = false end) end
+    end
+
     -- // ---------- Highlight fallback (lvl7 без Drawing) ----------
     local HLFolder = nil
     pcall(function()
@@ -8502,6 +8890,46 @@ do -- Visuals
             pcall(function() h.Enabled = false end)
         end
     end
+    -- // ---------- World highlights (руды/NPC/рюкзаки когда нет Drawing) ----------
+    local WorldHLCache = {}
+    local function SetWorldHighlight(obj, color, enabled)
+        if not HLFolder then return end
+        local hl = WorldHLCache[obj]
+        if not enabled then
+            if hl then pcall(function() hl.Enabled = false end) end
+            return
+        end
+        if not hl or not hl.Parent then
+            local ok, n = pcall(function()
+                local h = Instance.new("Highlight")
+                h.Name = "_TridentESP_World"
+                h.Adornee = obj
+                h.FillTransparency = 1
+                h.OutlineTransparency = 0
+                h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                h.Parent = HLFolder
+                return h
+            end)
+            if ok and n then hl = n WorldHLCache[obj] = hl
+                pcall(function()
+                    if typeof(obj) == "Instance" then
+                        obj.AncestryChanged:Connect(function(_, p)
+                            if p == nil and WorldHLCache[obj] then
+                                pcall(function() WorldHLCache[obj]:Destroy() end)
+                                WorldHLCache[obj] = nil
+                            end
+                        end)
+                    end
+                end)
+            else return end
+        end
+        pcall(function() hl.Enabled = true hl.Adornee = obj hl.OutlineColor = color end)
+    end
+    local function SweepWorldHighlights(seen)
+        for obj, hl in WorldHLCache do
+            if not seen[obj] then pcall(function() hl.Enabled = false end) end
+        end
+    end
 
     local function HideAllESP()
         if espLib then
@@ -8516,6 +8944,8 @@ do -- Visuals
             end)
         end
         ClearAllHighlights()
+        pcall(HideExtraESP)
+        pcall(ClearAllChams)
     end
     getgenv().TridentHideESP = HideAllESP
 
@@ -8533,6 +8963,9 @@ do -- Visuals
             TridentSettings.Players.Enabled = false
             TridentSettings.Ores.Enabled = false
             TridentSettings.NPC.Enabled = false
+            TridentSettings.Backpacks.Enabled = false
+            TridentSettings.Players.Chams = false
+            TridentSettings.Players.Skeleton = false
             pcall(HideAllESP)
             for _, flag in pairs(Library.Flags) do
                 if type(flag) == "table" and flag.Set then
@@ -8571,6 +9004,18 @@ do -- Visuals
     PlayersSec:Label({Message = "Sleeper color"}):ColorPicker({Default = TridentSettings.Players.SleeperColor, Flag = "ESP_SleeperColor", Callback = function(c)
         TridentSettings.Players.SleeperColor = c
     end})
+    PlayersSec:Toggle({Name = "Chams (Highlight)", Flag = "ESP_PlayersChams", Default = false, Callback = function(s)
+        TridentSettings.Players.Chams = s
+        if not s then pcall(ClearAllChams) end
+    end}):ColorPicker({Default = TridentSettings.Players.ChamsColor, Flag = "ESP_PlayersChamsCol", Callback = function(c)
+        TridentSettings.Players.ChamsColor = c
+    end})
+    PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
+        TridentSettings.Players.Skeleton = s
+        if not s then pcall(HideAllSkeletons) end
+    end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
+        TridentSettings.Players.SkeletonColor = c
+    end})
 
     -- ----- Ores UI -----
     OresSec:Toggle({Name = "Enable Ore ESP", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
@@ -8588,6 +9033,21 @@ do -- Visuals
     OresSec:Toggle({Name = "Nitrate Ore", Flag = "ESP_OreNitrate", Default = true, Callback = function(s) TridentSettings.Ores.Nitrate = s end}):ColorPicker({Default = TridentSettings.Ores.ColorNitrate, Flag = "ESP_OreNitrateCol", Callback = function(c) TridentSettings.Ores.ColorNitrate = c end})
     OresSec:Toggle({Name = "Stone Ore", Flag = "ESP_OreStone", Default = true, Callback = function(s) TridentSettings.Ores.Stone = s end}):ColorPicker({Default = TridentSettings.Ores.ColorStone, Flag = "ESP_OreStoneCol", Callback = function(c) TridentSettings.Ores.ColorStone = c end})
     OresSec:Slider({Name = "Max distance", Flag = "ESP_OresMaxDist", Min = 100, Max = 5000, Default = 1200, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Ores.MaxDistance = v end})
+    OresSec:Label({Message = "Backpacks (лут после смерти)"})
+    OresSec:Toggle({Name = "Enable Backpack ESP", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
+        TridentSettings.Backpacks.Enabled = s
+        if not s and espLib then
+            pcall(function()
+                for _, e in pairs(espLib.entityESP.entityCache) do
+                    local m = rawget(e.entity, "model")
+                    if m and FakeBackpackByModel[m] then e:hideDrawings() end
+                end
+            end)
+        end
+    end}):ColorPicker({Default = TridentSettings.Backpacks.Color, Flag = "ESP_BackpacksCol", Callback = function(c)
+        TridentSettings.Backpacks.Color = c
+    end})
+    OresSec:Slider({Name = "Backpack max dist", Flag = "ESP_BackpacksMaxDist", Min = 100, Max = 5000, Default = 1200, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Backpacks.MaxDistance = v end})
 
     -- ----- NPC UI -----
     NPCSec:Toggle({Name = "Enable NPC ESP", Flag = "ESP_NPCEnabled", Default = false, Callback = function(s)
@@ -8658,6 +9118,7 @@ do -- Visuals
         local S = TridentSettings
         local drawOK = DrawingOKCached()
         local useHL = (not drawOK) and S.Misc.UseHighlightFallback
+        local seenChams, seenSkel, seenWorld = {}, {}, {}
 
         -- статус раз в ~2 сек
         do
@@ -8729,6 +9190,12 @@ do -- Visuals
                         pcall(function()
                             esp:loop({box = S.Players.Box, name = S.Players.Name, distance = S.Players.Distance, weapon = S.Players.Weapon}, dist)
                         end)
+                        pcall(function()
+                            if S.Players.Chams then seenChams[model] = true SetChams(model, S.Players.ChamsColor, S.Players.ChamsFill, true)
+                            else SetChams(model, nil, 0, false) end
+                            if S.Players.Skeleton and drawOK then seenSkel[model] = true DrawSkeleton(model, S.Players.SkeletonColor)
+                            else HideSkeleton(model) end
+                        end)
                     end
                 end
             else
@@ -8796,6 +9263,12 @@ do -- Visuals
                                 esp.drawings.weapon.Text = wn
                             end
                         end)
+                        pcall(function()
+                            if S.Players.Chams then seenChams[model] = true SetChams(model, S.Players.ChamsColor, S.Players.ChamsFill, true)
+                            else SetChams(model, nil, 0, false) end
+                            if S.Players.Skeleton and drawOK then seenSkel[model] = true DrawSkeleton(model, S.Players.SkeletonColor)
+                            else HideSkeleton(model) end
+                        end)
                     end
                 end
             end
@@ -8822,6 +9295,8 @@ do -- Visuals
                     end
                     local sleeping = IsSleepingModel(model)
                     SetHighlight(model, sleeping and S.Players.SleeperColor or S.Players.Color, true)
+                    if S.Players.Chams then seenChams[model] = true SetChams(model, S.Players.ChamsColor, S.Players.ChamsFill, true)
+                    else SetChams(model, nil, 0, false) end
                 end)
             end
         else
@@ -8834,6 +9309,12 @@ do -- Visuals
                 end)
             end
             if not S.Players.Enabled then ClearAllHighlights() end
+            pcall(function()
+                for m, _ in ChamsCache do if not seenChams[m] then SetChams(m, nil, 0, false) end end
+                for m, _ in SkeletonPools do if not seenSkel[m] then HideSkeleton(m) end end
+                if not S.Players.Chams then ClearAllChams() end
+                if not (S.Players.Skeleton and drawOK) then HideAllSkeletons() end
+            end)
         end
 
         -- ---------- ORES ----------
@@ -8880,10 +9361,58 @@ do -- Visuals
                     end)
                 end
             end
+            -- руды-части (Part/MeshPart): текст + подсветка, т.к. entityESP умеет только Model
+            pcall(function()
+                for _, pi in ScanOreParts() do
+                    local p = pi.part
+                    if p.Parent then
+                        local allow = (pi.oreName == "Iron Ore" and S.Ores.Iron) or (pi.oreName == "Nitrate Ore" and S.Ores.Nitrate) or (pi.oreName == "Stone Ore" and S.Ores.Stone)
+                        if allow then
+                            local d = (Camera.CFrame.Position - p.Position).Magnitude
+                            if d <= S.Ores.MaxDistance then
+                                if S.Ores.Box then seenWorld[p] = true SetWorldHighlight(p, pi.color, true) end
+                                if S.Ores.Name or S.Ores.Distance then
+                                    local label = S.Ores.Name and pi.oreName or ""
+                                    if S.Ores.Distance then label = label .. (label ~= "" and " " or "") .. "[" .. math.floor(d) .. "]" end
+                                    ShowPartText(p, label, pi.color)
+                                end
+                            else
+                                local t0 = PartTextPool[p]
+                                if t0 then pcall(function() t0.Visible = false end) end
+                            end
+                        end
+                    end
+                end
+            end)
         else
             if espLib and not S.Ores.Enabled then
                 pcall(function()
-                    for _, e in pairs(espLib.entityESP.entityCache) do e:hideDrawings() end
+                    for _, e in pairs(espLib.entityESP.entityCache) do
+                        local m = rawget(e.entity, "model")
+                        if m and not FakeBackpackByModel[m] then e:hideDrawings() end
+                    end
+                end)
+                pcall(HideAllPartTexts)
+            elseif S.Ores.Enabled and not drawOK and S.Misc.UseHighlightFallback then
+                -- fallback без Drawing: подсвечиваем руды-модели и руды-части
+                pcall(function()
+                    for _, info in ScanOres() do
+                        local m = info.model
+                        if m.Parent then
+                            local allow = (info.oreName == "Iron Ore" and S.Ores.Iron) or (info.oreName == "Nitrate Ore" and S.Ores.Nitrate) or (info.oreName == "Stone Ore" and S.Ores.Stone)
+                            if allow then
+                                local okp, piv = pcall(function() return m:GetPivot().Position end)
+                                if okp and (Camera.CFrame.Position - piv).Magnitude <= S.Ores.MaxDistance then
+                                    seenWorld[m] = true SetWorldHighlight(m, info.color, true)
+                                end
+                            end
+                        end
+                    end
+                    for _, pi in ScanOreParts() do
+                        if pi.part.Parent and (Camera.CFrame.Position - pi.part.Position).Magnitude <= S.Ores.MaxDistance then
+                            seenWorld[pi.part] = true SetWorldHighlight(pi.part, pi.color, true)
+                        end
+                    end
                 end)
             end
         end
@@ -8926,8 +9455,81 @@ do -- Visuals
                 pcall(function()
                     for _, e in pairs(espLib.npcESP.npcCache) do e:hideDrawings() end
                 end)
+            elseif S.NPC.Enabled and not drawOK and S.Misc.UseHighlightFallback then
+                pcall(function()
+                    for _, model in GetNPCModels() do
+                        if model.Parent then
+                            local hrp = model:FindFirstChild("HumanoidRootPart")
+                            if hrp and (Camera.CFrame.Position - hrp.Position).Magnitude <= S.NPC.MaxDistance then
+                                seenWorld[model] = true SetWorldHighlight(model, S.NPC.Color, true)
+                            end
+                        end
+                    end
+                end)
             end
         end
+
+        -- ---------- BACKPACKS (лут после смерти) ----------
+        if S.Backpacks.Enabled and espLib and drawOK then
+            pcall(function()
+                for _, model in GetBackpackModels() do
+                    if not model.Parent then continue end
+                    local okp, piv = pcall(function() return model:GetPivot().Position end)
+                    if not okp then continue end
+                    local dist = (Camera.CFrame.Position - piv).Magnitude
+                    local fake0 = FakeBackpackByModel[model]
+                    if dist > S.Backpacks.MaxDistance then
+                        if fake0 then
+                            local e0 = espLib.entityESP.entityCache[fake0]
+                            if e0 then e0:hideDrawings() end
+                        end
+                        continue
+                    end
+                    local nm = string.lower(model.Name)
+                    local label = (string.find(nm, "bag", 1, true) or string.find(nm, "backpack", 1, true)
+                        or string.find(nm, "corpse", 1, true) or string.find(nm, "body", 1, true)
+                        or string.find(nm, "loot", 1, true)) and model.Name or "Backpack"
+                    local fake = GetFakeBackpack(model, label)
+                    local esp = espLib.entityESP.entityCache[fake]
+                    if not esp then
+                        local okc, obj = pcall(function() return espLib.entityESP.new(fake, label, S.Backpacks.Color) end)
+                        if okc then esp = obj end
+                    end
+                    if esp then
+                        pcall(function()
+                            esp.drawings.box.Color = S.Backpacks.Color
+                            esp.drawings.name.Color = S.Backpacks.Color
+                            esp.drawings.distance.Color = S.Backpacks.Color
+                            esp.drawings.name.Text = label
+                        end)
+                        pcall(function()
+                            esp:loop({box = S.Backpacks.Box, name = S.Backpacks.Name, distance = S.Backpacks.Distance}, dist)
+                        end)
+                    end
+                end
+            end)
+        else
+            if espLib and not S.Backpacks.Enabled then
+                pcall(function()
+                    for _, e in pairs(espLib.entityESP.entityCache) do
+                        local m = rawget(e.entity, "model")
+                        if m and FakeBackpackByModel[m] then e:hideDrawings() end
+                    end
+                end)
+            elseif S.Backpacks.Enabled and not drawOK and S.Misc.UseHighlightFallback then
+                pcall(function()
+                    for _, model in GetBackpackModels() do
+                        if model.Parent then
+                            local okp, piv = pcall(function() return model:GetPivot().Position end)
+                            if okp and (Camera.CFrame.Position - piv).Magnitude <= S.Backpacks.MaxDistance then
+                                seenWorld[model] = true SetWorldHighlight(model, S.Backpacks.Color, true)
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+        pcall(function() SweepWorldHighlights(seenWorld) end)
     end, "TridentESP_Loop")
 end
 --
