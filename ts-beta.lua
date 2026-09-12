@@ -8303,6 +8303,109 @@ do -- Visuals
         if string.find(nm, "stone", 1, true) or string.find(nm, "cobble", 1, true) then return "Stone Ore", TridentSettings.Ores.ColorStone end
         return nil, nil
     end
+    local function PushOre(out, m, name, col)
+        if typeof(m) ~= "Instance" or not m.Parent then return end
+        if not m:IsA("Model") then return end
+        local ok = pcall(function() m:GetBoundingBox() end)
+        if ok then table.insert(out, { model = m, oreName = name, color = col }) end
+    end
+    local function IsCharLike(ch)
+        local ok, r = pcall(function()
+            return ch:FindFirstChild("HumanoidRootPart") ~= nil or ch:FindFirstChild("Humanoid") ~= nil
+        end)
+        return ok and r
+    end
+    local function ClassifyRockModelInto(out, ch)
+        local rock = nil
+        pcall(function() rock = ch:FindFirstChild("Meshes/rock", true) end)
+        if not rock then return false end
+        local oreName = "Stone Ore"
+        local col = TridentSettings.Ores.ColorStone
+        pcall(function()
+            for _, v2 in ch:GetChildren() do
+                if v2:IsA("MeshPart") then
+                    if v2.BrickColor == BrickColor.new(352) then
+                        oreName = "Iron Ore" col = TridentSettings.Ores.ColorIron
+                    elseif v2.BrickColor == BrickColor.new(1001) then
+                        oreName = "Nitrate Ore" col = TridentSettings.Ores.ColorNitrate
+                    end
+                end
+            end
+            if #ch:GetChildren() == 1 then oreName = "Stone Ore" col = TridentSettings.Ores.ColorStone end
+        end)
+        PushOre(out, ch, oreName, col)
+        return true
+    end
+    -- // ---------- POIs: глубокий скан руды + NPC (кэш + инкремент) ----------
+    local POIOres = {}
+    local POINPCs = {}
+    local POISeen = {}
+    local POIConns = {}
+    local POIScanTick = -100
+    local POIConnected = false
+    local function ClassifyPOIModel(m, oreOut, npcOut)
+        if not m:IsA("Model") then return end
+        if not m.Parent then return end
+        if POISeen[m] then return end
+        POISeen[m] = true
+        local hrp = nil
+        pcall(function() hrp = m:FindFirstChild("HumanoidRootPart") end)
+        if hrp then
+            local hh = nil
+            pcall(function() hh = m:FindFirstChild("Head") or m:FindFirstChild("Humanoid") end)
+            if hh then table.insert(npcOut, m) return end
+        end
+        if IsCharLike(m) then return end
+        local kind, col = OreKindFromName(m.Name)
+        if kind then PushOre(oreOut, m, kind, col) return end
+        local small = false
+        pcall(function() small = #m:GetDescendants() < 60 end)
+        if small then
+            if ClassifyRockModelInto(oreOut, m) then return end
+            pcall(function()
+                for _, d in m:GetDescendants() do
+                    if d:IsA("MeshPart") then
+                        local dn = string.lower(d.Name)
+                        if string.find(dn, "rock", 1, true) or string.find(dn, "ore", 1, true) then
+                            PushOre(oreOut, m, "Stone Ore", TridentSettings.Ores.ColorStone)
+                            return
+                        end
+                    end
+                end
+            end)
+        end
+    end
+    local function RescanPOIs(force)
+        local now = os.clock()
+        if not force and now - POIScanTick < 30 then return end
+        POIScanTick = now
+        POISeen = {}
+        local oreOut, npcOut = {}, {}
+        local pois = nil
+        pcall(function()
+            local w = Workspace:FindFirstChild("World")
+            pois = w and w:FindFirstChild("POIs")
+        end)
+        if pois then
+            pcall(function()
+                for _, d in pois:GetDescendants() do
+                    if d:IsA("Model") then ClassifyPOIModel(d, oreOut, npcOut) end
+                end
+            end)
+            if not POIConnected then
+                POIConnected = true
+                pcall(function()
+                    local c = pois.DescendantAdded:Connect(function(d)
+                        if d:IsA("Model") then
+                            task.delay(1, function() pcall(function() ClassifyPOIModel(d, POIOres, POINPCs) end) end)
+                        end
+                    end)
+                    table.insert(POIConns, c)
+                end)
+            end
+        end
+        POIOres, POINPCs = oreOut, npcOut
+    end
     local OreScanCache = {}
     local OreScanTick = 0
     local function ScanOres()
@@ -8310,11 +8413,12 @@ do -- Visuals
         if now - OreScanTick < 1 and #OreScanCache > 0 then return OreScanCache end
         OreScanTick = now
         local out = {}
+        local seen = {}
         local function push(m, name, col)
-            if typeof(m) ~= "Instance" or not m.Parent then return end
-            if not m:IsA("Model") then return end
-            local ok = pcall(function() m:GetBoundingBox() end)
-            if ok then table.insert(out, { model = m, oreName = name, color = col }) end
+            if seen[m] then return end
+            local before = #out
+            PushOre(out, m, name, col)
+            if #out > before then seen[m] = true end
         end
         -- 1) Workspace.Entities/IronOre и т.д.
         local entOk, ent = pcall(function() return Workspace:FindFirstChild("Entities") end)
@@ -8373,32 +8477,9 @@ do -- Visuals
             end
         end
         -- 2) Модели с Meshes/rock (корень Workspace + папка World, любое имя, не персонажи)
-        local function ClassifyRockModel(ch)
-            local rock = nil
-            pcall(function() rock = ch:FindFirstChild("Meshes/rock", true) end)
-            if not rock then return end
-            local oreName = "Stone Ore"
-            local col = TridentSettings.Ores.ColorStone
-            pcall(function()
-                for _, v2 in ch:GetChildren() do
-                    if v2:IsA("MeshPart") then
-                        if v2.BrickColor == BrickColor.new(352) then
-                            oreName = "Iron Ore" col = TridentSettings.Ores.ColorIron
-                        elseif v2.BrickColor == BrickColor.new(1001) then
-                            oreName = "Nitrate Ore" col = TridentSettings.Ores.ColorNitrate
-                        end
-                    end
-                end
-                if #ch:GetChildren() == 1 then oreName = "Stone Ore" col = TridentSettings.Ores.ColorStone end
-            end)
-            push(ch, oreName, col)
-        end
-        local function IsCharLike(ch)
-            return ch:FindFirstChild("HumanoidRootPart") ~= nil or ch:FindFirstChild("Humanoid") ~= nil
-        end
         for _, ch in Workspace:GetChildren() do
             if ch:IsA("Model") and not IsCharLike(ch) then
-                ClassifyRockModel(ch)
+                ClassifyRockModelInto(out, ch)
             end
         end
         do -- World: модели напрямую и на 1 уровень вглубь
@@ -8410,7 +8491,7 @@ do -- Visuals
                         if ch:IsA("Model") then
                             if not IsCharLike(ch) then
                                 local before = #out
-                                ClassifyRockModel(ch)
+                                ClassifyRockModelInto(out, ch)
                                 if #out == before then
                                     local kind, col = OreKindFromName(ch.Name)
                                     if kind then push(ch, kind, col) end
@@ -8420,7 +8501,7 @@ do -- Visuals
                             for _, m in ch:GetChildren() do
                                 if m:IsA("Model") and not IsCharLike(m) then
                                     local before = #out
-                                    ClassifyRockModel(m)
+                                    ClassifyRockModelInto(out, m)
                                     if #out == before then
                                         local kind, col = OreKindFromName(m.Name)
                                         if kind then push(m, kind, col) end
@@ -8460,6 +8541,21 @@ do -- Visuals
                     end
                 end
             end
+        end
+        -- 4) POIs: мержим глубокий кэш (первый скан — асинхронно, чтобы не фризить)
+        if POIScanTick < 0 then
+            POIScanTick = os.clock()
+            task.spawn(function() pcall(function() RescanPOIs(true) end) end)
+        else
+            pcall(function()
+                RescanPOIs(false)
+                for _, info in POIOres do
+                    if info.model.Parent and not seen[info.model] then
+                        seen[info.model] = true
+                        table.insert(out, info)
+                    end
+                end
+            end)
         end
         OreScanCache = out
         return out
@@ -8545,6 +8641,16 @@ do -- Visuals
                     end
                 end
             end
+        end
+        do -- POIs: мержим NPC-кэш
+            local seenN = {}
+            for _, m in out do seenN[m] = true end
+            pcall(function()
+                RescanPOIs(false)
+                for _, m in POINPCs do
+                    if m.Parent and not seenN[m] then table.insert(out, m) end
+                end
+            end)
         end
         NPCCache = out
         return out
@@ -9026,13 +9132,82 @@ do -- Visuals
     end
     getgenv().TridentHideESP = HideAllESP
 
-    -- wrap Unload чтобы чистить ESP
+    -- полный снос всех Drawing/highlight/кэшей (для кнопки Unload)
+    local function NukeDrawings()
+        pcall(function()
+            if espLib then
+                local groups = {
+                    espLib.playerESP.playerCache, espLib.entityESP.entityCache, espLib.npcESP.npcCache,
+                    espLib.playerESP.drawingCache, espLib.entityESP.drawingCache, espLib.npcESP.drawingCache,
+                }
+                for _, g in pairs(groups) do
+                    for _, e in pairs(g) do
+                        local ds = e and (e.allDrawings or e.all)
+                        if ds then
+                            if ds.Visible ~= nil then pcall(function() ds:Remove() end)
+                            else for _, d in pairs(ds) do pcall(function() d:Remove() end) end end
+                        end
+                    end
+                end
+                espLib.playerESP.playerCache = {}
+                espLib.entityESP.entityCache = {}
+                espLib.npcESP.npcCache = {}
+            end
+        end)
+        pcall(function()
+            for _, pl in pairs(SkeletonPools) do for _, l in pairs(pl.lines) do pcall(function() l:Remove() end) end end
+        end)
+        pcall(function() for _, t in pairs(PartTextPool) do pcall(function() t:Remove() end) end end)
+        pcall(function()
+            for _, c in pairs(POIConns) do pcall(function() c:Disconnect() end) end
+        end)
+    end
+
+    -- wrap Unload: гасим флаги, СНОСИМ всё, чистим кэши, потом штатный Unload
     do
         local oldUnload = Library.Unload
         function Library:Unload(...)
-            pcall(HideAllESP)
+            pcall(function()
+                TridentSettings.Players.Enabled = false
+                TridentSettings.Players.Chams = false
+                TridentSettings.Players.Skeleton = false
+                TridentSettings.Ores.Enabled = false
+                TridentSettings.NPC.Enabled = false
+                TridentSettings.Backpacks.Enabled = false
+            end)
+            pcall(NukeDrawings)
+            pcall(function()
+                SkeletonPools = {}
+                PartTextPool = {}
+                FakePlayerByModel = {}
+                FakeOreByModel = {}
+                FakeNPCByModel = {}
+                FakeBackpackByModel = {}
+                ChamsCache = {}
+                HLCache = {}
+                WorldHLCache = {}
+                OreScanCache = {}
+                OrePartScanCache = {}
+                BackpackScanCache = {}
+                NPCCache = {}
+                POIOres = {}
+                POINPCs = {}
+                POISeen = {}
+                POIConns = {}
+                OreScanTick = 0
+                OrePartScanTick = 0
+                BackpackScanTick = 0
+                NPCScanTick = 0
+                POIScanTick = -100
+                POIConnected = false
+                AdvancedList = nil
+                AdvancedTried = false
+            end)
             pcall(function()
                 if HLFolder then HLFolder:Destroy() end
+            end)
+            pcall(function()
+                if getgenv().TridentESPLib == espLib then getgenv().TridentESPLib = nil end
             end)
             return oldUnload(self, ...)
         end
@@ -9097,6 +9272,7 @@ do -- Visuals
     -- ----- Ores UI -----
     OresSec:Toggle({Name = "Enable Ore ESP", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
         TridentSettings.Ores.Enabled = s
+        if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
         if not s and espLib then
             pcall(function()
                 for _, e in pairs(espLib.entityESP.entityCache) do e:hideDrawings() end
@@ -9129,6 +9305,7 @@ do -- Visuals
     -- ----- NPC UI -----
     NPCSec:Toggle({Name = "Enable NPC ESP", Flag = "ESP_NPCEnabled", Default = false, Callback = function(s)
         TridentSettings.NPC.Enabled = s
+        if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
         if not s and espLib then
             pcall(function()
                 for _, e in pairs(espLib.npcESP.npcCache) do e:hideDrawings() end
@@ -9334,6 +9511,12 @@ do -- Visuals
         pcall(function() writefile("trident_scan.txt", text) end)
         pcall(function() setclipboard(text) end)
         Library:Notify({Message = "Scan готов: trident_scan.txt + буфер. Пришли мне содержимое.", Delay = 6})
+    end})
+    MiscSec:Button({Name = "Rescan world (POIs)", Callback = function()
+        task.spawn(function()
+            local ok = pcall(function() RescanPOIs(true) end)
+            Library:Notify({Message = ok and "World пересканирован" or "Rescan упал", Delay = 3})
+        end)
     end})
     MiscSec:Button({Name = "Fix Drawing (actor)", Callback = function()
         local src = getgenv().TRIDENT_ACTOR_SRC
