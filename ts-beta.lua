@@ -8400,20 +8400,26 @@ do -- Visuals
         if not m.Parent then return end
         if POISeen[m] then return end
         POISeen[m] = true
-        local hrp = nil
-        pcall(function() hrp = m:FindFirstChild("HumanoidRootPart") end)
-        if hrp then
-            local hh = nil
-            pcall(function() hh = m:FindFirstChild("Head") or m:FindFirstChild("Humanoid") end)
-            if hh then table.insert(npcOut, m) return end
+        -- NPC: любая кукла с HRP/Humanoid/Head (игроков в POIs нет — их модели в корне)
+        do
+            local hasChar = false
+            pcall(function()
+                hasChar = m:FindFirstChild("HumanoidRootPart") ~= nil
+                    or m:FindFirstChild("Humanoid") ~= nil
+                    or m:FindFirstChild("Head") ~= nil
+            end)
+            if hasChar then table.insert(npcOut, m) return end
         end
         if IsCharLike(m) then return end
+        -- точная сигнатура шаблона (метод SwimHub)
         do
             local signame = IdentifyModel(m)
             if signame == "Stone" or signame == "Nitrate" or signame == "Iron" then
                 local label, col = OreLabelColor(signame)
                 PushOre(oreOut, m, label, col)
                 return
+            elseif signame then
+                return -- Backpack/Tree/ATV/... — не руда, разберут свои сканеры
             end
         end
         local kind, col = OreKindFromName(m.Name)
@@ -8422,9 +8428,17 @@ do -- Visuals
         pcall(function() small = #m:GetDescendants() < 60 end)
         if small then
             if ClassifyRockModelInto(oreOut, m) then return end
+            -- запасной вариант: тан/белый меш (фирменные цвета железной/нитратной руды)
             pcall(function()
                 for _, d in m:GetDescendants() do
                     if d:IsA("MeshPart") then
+                        if d.Color == Color3.fromRGB(199, 172, 120) then
+                            PushOre(oreOut, m, "Iron Ore", TridentSettings.Ores.ColorIron)
+                            return
+                        elseif d.Color == Color3.fromRGB(248, 248, 248) then
+                            PushOre(oreOut, m, "Nitrate Ore", TridentSettings.Ores.ColorNitrate)
+                            return
+                        end
                         local dn = string.lower(d.Name)
                         if string.find(dn, "rock", 1, true) or string.find(dn, "ore", 1, true) then
                             PushOre(oreOut, m, "Stone Ore", TridentSettings.Ores.ColorStone)
@@ -9382,6 +9396,12 @@ do -- Visuals
     OresSec:Toggle({Name = "Enable Ore ESP", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
         TridentSettings.Ores.Enabled = s
         if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
+        if s then task.delay(7, function()
+            if not TridentSettings.Ores.Enabled then return end
+            local n = 0
+            pcall(function() n = #ScanOres() end)
+            Library:Notify({Message = "Руд найдено: " .. tostring(n), Delay = 4})
+        end) end
         if not s and espLib then
             pcall(function()
                 for _, e in pairs(espLib.entityESP.entityCache) do e:hideDrawings() end
@@ -9398,6 +9418,12 @@ do -- Visuals
     OresSec:Label({Message = "Backpacks (лут после смерти)"})
     OresSec:Toggle({Name = "Enable Backpack ESP", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
         TridentSettings.Backpacks.Enabled = s
+        if s then task.delay(4, function()
+            if not TridentSettings.Backpacks.Enabled then return end
+            local n = 0
+            pcall(function() n = #GetBackpackModels() end)
+            Library:Notify({Message = "Рюкзаков найдено: " .. tostring(n), Delay = 4})
+        end) end
         if not s and espLib then
             pcall(function()
                 for _, e in pairs(espLib.entityESP.entityCache) do
@@ -9415,6 +9441,12 @@ do -- Visuals
     NPCSec:Toggle({Name = "Enable NPC ESP", Flag = "ESP_NPCEnabled", Default = false, Callback = function(s)
         TridentSettings.NPC.Enabled = s
         if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
+        if s then task.delay(7, function()
+            if not TridentSettings.NPC.Enabled then return end
+            local n = 0
+            pcall(function() n = #GetNPCModels() end)
+            Library:Notify({Message = "NPC найдено: " .. tostring(n), Delay = 4})
+        end) end
         if not s and espLib then
             pcall(function()
                 for _, e in pairs(espLib.npcESP.npcCache) do e:hideDrawings() end
@@ -9812,7 +9844,14 @@ do -- Visuals
                         -- поверх библиотеки ставим ник (workspace-режим информативнее)
                         pcall(function()
                             if S.Players.Name and esp.drawings.name.Visible then
-                                esp.drawings.name.Text = model.Name .. (sleeping and " [sleep]" or "")
+                                local nick = model.Name
+                                pcall(function()
+                                    local tag = model:FindFirstChild("Head")
+                                    tag = tag and tag:FindFirstChild("Nametag")
+                                    tag = tag and tag:FindFirstChild("tag")
+                                    if tag and tag.Text ~= "" then nick = tag.Text end
+                                end)
+                                esp.drawings.name.Text = nick .. (sleeping and " [sleep]" or "")
                             end
                             if S.Players.Weapon and esp.drawings.weapon.Visible then
                                 local wn = GetWeaponName(model)
@@ -9977,9 +10016,9 @@ do -- Visuals
         if S.NPC.Enabled and espLib and drawOK then
             for _, model in GetNPCModels() do
                 if not model.Parent then continue end
-                local hrp = model:FindFirstChild("HumanoidRootPart")
-                if not hrp then continue end
-                local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                local okp, piv = pcall(function() return model:GetPivot().Position end)
+                if not okp then continue end
+                local dist = (Camera.CFrame.Position - piv).Magnitude
                 if dist > S.NPC.MaxDistance then
                     local f0 = FakeNPCByModel[model]
                     if f0 then
@@ -10015,8 +10054,8 @@ do -- Visuals
                 pcall(function()
                     for _, model in GetNPCModels() do
                         if model.Parent then
-                            local hrp = model:FindFirstChild("HumanoidRootPart")
-                            if hrp and (Camera.CFrame.Position - hrp.Position).Magnitude <= S.NPC.MaxDistance then
+                            local okp, piv = pcall(function() return model:GetPivot().Position end)
+                            if okp and (Camera.CFrame.Position - piv).Magnitude <= S.NPC.MaxDistance then
                                 seenWorld[model] = true SetWorldHighlight(model, S.NPC.Color, true)
                             end
                         end
