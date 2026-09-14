@@ -8337,6 +8337,58 @@ do -- Visuals
         return true
     end
     -- // ---------- POIs: глубокий скан руды + NPC (кэш + инкремент) ----------
+    -- // ---------- Сигнатуры сущностей (метод SwimHub/yougame): ReplicatedStorage.Shared.entities ----------
+    local EntitySig = {}
+    local EntitySigBuilt = false
+    local function BuildEntitySig()
+        if EntitySigBuilt then return end
+        EntitySigBuilt = true
+        pcall(function()
+            local shared = ReplicatedStorage:FindFirstChild("Shared")
+            local ents = shared and shared:FindFirstChild("entities")
+            if not ents then return end
+            for _, v in ents:GetChildren() do
+                local model = v:FindFirstChild("Model")
+                local pp = model and model.PrimaryPart
+                if pp then
+                    EntitySig[v.Name] = { Color = pp.Color, Material = pp.Material, CollisionGroup = pp.CollisionGroup }
+                end
+            end
+        end)
+    end
+    local ORE_MESH = "rbxassetid://12939036056"
+    local function IdentifyModel(model)
+        local ok, kind, part = pcall(function()
+            if not model:IsA("Model") then return nil, nil end
+            local mp = model:FindFirstChildOfClass("MeshPart")
+            if mp and mp.MeshId == ORE_MESH then
+                if #model:GetChildren() == 1 then return "Stone", mp end
+                for _, p in model:GetChildren() do
+                    if p:IsA("BasePart") then
+                        if p.Color == Color3.fromRGB(248, 248, 248) then return "Nitrate", p end
+                        if p.Color == Color3.fromRGB(199, 172, 120) then return "Iron", p end
+                    end
+                end
+                return "Stone", mp
+            end
+            local pp = model.PrimaryPart
+            if not pp then return nil, nil end
+            BuildEntitySig()
+            for name, sig in EntitySig do
+                if sig.Color == pp.Color and sig.Material == pp.Material and sig.CollisionGroup == pp.CollisionGroup then
+                    return name, pp
+                end
+            end
+            return nil, nil
+        end)
+        if ok then return kind, part end
+        return nil, nil
+    end
+    local function OreLabelColor(kind)
+        if kind == "Iron" then return "Iron Ore", TridentSettings.Ores.ColorIron end
+        if kind == "Nitrate" then return "Nitrate Ore", TridentSettings.Ores.ColorNitrate end
+        return "Stone Ore", TridentSettings.Ores.ColorStone
+    end
     local POIOres = {}
     local POINPCs = {}
     local POISeen = {}
@@ -8356,6 +8408,14 @@ do -- Visuals
             if hh then table.insert(npcOut, m) return end
         end
         if IsCharLike(m) then return end
+        do
+            local signame = IdentifyModel(m)
+            if signame == "Stone" or signame == "Nitrate" or signame == "Iron" then
+                local label, col = OreLabelColor(signame)
+                PushOre(oreOut, m, label, col)
+                return
+            end
+        end
         local kind, col = OreKindFromName(m.Name)
         if kind then PushOre(oreOut, m, kind, col) return end
         local small = false
@@ -8419,6 +8479,35 @@ do -- Visuals
             local before = #out
             PushOre(out, m, name, col)
             if #out > before then seen[m] = true end
+        end
+        -- 0) Точный метод SwimHub: сигнатуры шаблонов ReplicatedStorage.Shared.entities
+        do
+            local sigModels = {}
+            pcall(function()
+                for _, ch in Workspace:GetChildren() do
+                    if ch:IsA("Model") then table.insert(sigModels, ch) end
+                end
+                local w = Workspace:FindFirstChild("World")
+                if w then
+                    for _, ch in w:GetChildren() do
+                        if ch:IsA("Model") then table.insert(sigModels, ch)
+                        elseif ch:IsA("Folder") then
+                            for _, m in ch:GetChildren() do
+                                if m:IsA("Model") then table.insert(sigModels, m) end
+                            end
+                        end
+                    end
+                end
+            end)
+            for _, m in sigModels do
+                if not IsCharLike(m) then
+                    local kind = IdentifyModel(m)
+                    if kind == "Stone" or kind == "Nitrate" or kind == "Iron" then
+                        local label, col = OreLabelColor(kind)
+                        push(m, label, col)
+                    end
+                end
+            end
         end
         -- 1) Workspace.Entities/IronOre и т.д.
         local entOk, ent = pcall(function() return Workspace:FindFirstChild("Entities") end)
@@ -8579,7 +8668,15 @@ do -- Visuals
                     local pf = Workspace:FindFirstChild("Players")
                     if pf and m.Parent == pf then inPlayers = true end
                 end)
-                if not inPlayers then table.insert(out, m) end
+                if not inPlayers then
+                    if m.Name ~= "Model" then
+                        table.insert(out, m)
+                    else
+                        -- игроки тоже называются Model: отличаем по сигнатуре шаблона
+                        local signame = IdentifyModel(m)
+                        if signame and signame ~= "Player" then table.insert(out, m) end
+                    end
+                end
         end
         if entOk and ent then
             for _, d in ent:GetChildren() do
@@ -8770,6 +8867,14 @@ do -- Visuals
             if not m.Parent then return end
             if m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Humanoid") then return end
             if m:FindFirstChild("Meshes/rock", true) then return end
+            do -- точная сигнатура Backpack из шаблонов игры
+                local signame = IdentifyModel(m)
+                if signame == "Backpack" then
+                    local ok = pcall(function() m:GetPivot() end)
+                    if ok then table.insert(out, m) end
+                    return
+                end
+            end
             local nm = string.lower(m.Name)
             -- двери/ворота — никогда не рюкзаки
             for _, w in { "door", "gate", "hatch", "shutter", "doorway", "entrance" } do
@@ -8960,18 +9065,22 @@ do -- Visuals
         end
         local pairs = {}
         local head, hrp = P("Head"), P("HumanoidRootPart")
-        local ut, lt = P("UpperTorso"), P("LowerTorso")
-        if head and ut and lt then
-            local ual, lal, hal = P("UpperArmL"), P("LowerArmL"), P("HandL")
-            local uar, lar, har = P("UpperArmR"), P("LowerArmR"), P("HandR")
-            local ull, lll, fl = P("UpperLegL"), P("LowerLegL"), P("FootL")
-            local ulr, llr, fr = P("UpperLegR"), P("LowerLegR"), P("FootR")
+        local torso = P("Torso") or P("UpperTorso")
+        local low = P("LowerTorso")
+        if head and torso then
+            -- Trident R15: LeftUpperArm/LeftLowerArm/LeftHand ... (порядок SwimHub)
+            local ual, lal, hal = P("LeftUpperArm"), P("LeftLowerArm"), P("LeftHand")
+            local uar, lar, har = P("RightUpperArm"), P("RightLowerArm"), P("RightHand")
+            local ull, lll, fl = P("LeftUpperLeg"), P("LeftLowerLeg"), P("LeftFoot")
+            local ulr, llr, fr = P("RightUpperLeg"), P("RightLowerLeg"), P("RightFoot")
+            local legRoot = low or torso
             pairs = {
-                { head, ut }, { ut, lt },
-                { ut, ual }, { ual, lal }, { lal, hal },
-                { ut, uar }, { uar, lar }, { lar, har },
-                { lt, ull }, { ull, lll }, { lll, fl },
-                { lt, ulr }, { ulr, llr }, { llr, fr },
+                { head, torso },
+                { torso, low },
+                { torso, ual }, { ual, lal }, { lal, hal },
+                { torso, uar }, { uar, lar }, { lar, har },
+                { legRoot, ull }, { ull, lll }, { lll, fl },
+                { legRoot, ulr }, { ulr, llr }, { llr, fr },
             }
         else
             local torso = P("Torso")
@@ -9365,6 +9474,13 @@ do -- Visuals
             else
                 add("== Players folder: MISSING ==")
             end
+        end)
+        pcall(function()
+            BuildEntitySig()
+            local names = {}
+            for n, _ in EntitySig do table.insert(names, n) end
+            table.sort(names)
+            add("== RS entity templates(" .. tostring(#names) .. "): " .. table.concat(names, ", ") .. " ==")
         end)
         local function sample(title, list, fmt)
             add("== " .. title .. ": " .. tostring(#list) .. " ==")
