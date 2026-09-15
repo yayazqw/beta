@@ -1,6 +1,7 @@
 if Library and Library.Unload then
-    Library:Unload()
+    pcall(function() Library:Unload() end)
 end
+print("[ts-beta] start v9a0610e")
 --
 local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
@@ -10397,4 +10398,5 @@ end
 Library:Init()
 -- // Trident Survival ESP ready. Open Visuals and enable ESP.
 Library:Notify({Message = "Trident ESP loaded. Open <b>Visuals</b> and enable ESP.", Delay = 5})
+print("[ts-beta] ready v9a0610e")
 
