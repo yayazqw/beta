@@ -1312,11 +1312,18 @@ do -- Library
     end
     --
     function Library:ViewPlayer(Player)
-        if not Library.UI.Viewing then
-            Camera.CameraSubject = Player.Character.Humanoid
-        else
-            Camera.CameraSubject = Client.Character.Humanoid
-        end
+        local ok = pcall(function()
+            if not Library.UI.Viewing then
+                local ch = Player and Player.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                if hum then Camera.CameraSubject = hum end
+            else
+                local ch = Client and Client.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                if hum then Camera.CameraSubject = hum end
+            end
+        end)
+        if not ok then return end
         --
         Library.UI.Viewing = not Library.UI.Viewing
     end
@@ -8096,17 +8103,21 @@ do -- Library
         end
         --
         function Library:Unload()
-            Camera.CameraSubject = Client.Character.Humanoid
+            pcall(function()
+                local ch = Client and Client.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                if hum then Camera.CameraSubject = hum end
+            end)
             --
             for Index, Value in Library.Connections do
-                Value:Disconnect()
+                pcall(function() Value:Disconnect() end)
             end
             --
             for _, Objects in Library.Objects do
-                Objects[1]:Destroy()
+                pcall(function() Objects[1]:Destroy() end)
             end
             --
-            MainUI:Destroy()
+            pcall(function() MainUI:Destroy() end)
         end
         --
         function Library:Disable()
@@ -8753,15 +8764,20 @@ do -- Visuals
                 end
             end
         end
-        do -- POIs: мержим NPC-кэш
-            local seenN = {}
-            for _, m in out do seenN[m] = true end
-            pcall(function()
-                RescanPOIs(false)
-                for _, m in POINPCs do
-                    if m.Parent and not seenN[m] then table.insert(out, m) end
-                end
-            end)
+        do -- POIs: мержим NPC-кэш (первый скан — асинхронно, чтобы не фризить кадр)
+            if POIScanTick < 0 then
+                POIScanTick = os.clock()
+                task.spawn(function() pcall(function() RescanPOIs(true) end) end)
+            else
+                local seenN = {}
+                for _, m in out do seenN[m] = true end
+                pcall(function()
+                    RescanPOIs(false)
+                    for _, m in POINPCs do
+                        if m.Parent and not seenN[m] then table.insert(out, m) end
+                    end
+                end)
+            end
         end
         NPCCache = out
         return out
@@ -9653,6 +9669,60 @@ do -- Visuals
                 end
                 add("other-like total: " .. tostring(n))
             end)
+        end)
+        pcall(function()
+            add("== Trading Post dump (first 120) ==")
+            local tp = Workspace:FindFirstChild("World")
+            tp = tp and tp:FindFirstChild("POIs")
+            tp = tp and tp:FindFirstChild("Trading Post")
+            if tp then
+                local n = 0
+                for _, d in tp:GetDescendants() do
+                    n += 1
+                    if n <= 120 then
+                        local extra = ""
+                        if d:IsA("BasePart") then extra = " size=" .. tostring(d.Size) end
+                        add("  " .. d.ClassName .. " | " .. d.Name .. extra)
+                    end
+                end
+                add("tradingpost total: " .. tostring(n))
+            else add("Trading Post: MISSING") end
+        end)
+        pcall(function()
+            add("== POI Humanoid search ==")
+            local w = Workspace:FindFirstChild("World")
+            local pois = w and w:FindFirstChild("POIs")
+            if pois then
+                local n = 0
+                for _, d in pois:GetDescendants() do
+                    if d:IsA("Humanoid") then
+                        n += 1
+                        if n <= 20 then
+                            local m = d:FindFirstAncestorOfClass("Model")
+                            add("  Humanoid hp=" .. tostring(math.floor(d.Health)) .. "/" .. tostring(math.floor(d.MaxHealth)) .. " in " .. (m and m:GetFullName() or "?"))
+                        end
+                    end
+                end
+                add("humanoids in POIs: " .. tostring(n))
+            end
+        end)
+        pcall(function()
+            add("== POI prompt models ==")
+            local w = Workspace:FindFirstChild("World")
+            local pois = w and w:FindFirstChild("POIs")
+            if pois then
+                local n = 0
+                for _, d in pois:GetDescendants() do
+                    if d:IsA("ProximityPrompt") then
+                        n += 1
+                        if n <= 20 then
+                            local m = d:FindFirstAncestorOfClass("Model")
+                            add("  prompt in " .. (m and m:GetFullName() or "?"))
+                        end
+                    end
+                end
+                add("prompts in POIs: " .. tostring(n))
+            end
         end)
         local text = table.concat(lines, "\n")
         getgenv().TridentLastScan = text
