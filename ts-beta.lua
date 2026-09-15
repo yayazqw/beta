@@ -9399,7 +9399,7 @@ do -- Visuals
             pcall(function()
                 if HLFolder then HLFolder:Destroy() end
             end)
-            pcall(function() return oldUnload(self, ...) end)
+            pcall(function() return oldUnload(self) end)
             getgenv().TridentESPLib = nil
             getgenv().TridentSettings = nil
             getgenv().Library = nil
