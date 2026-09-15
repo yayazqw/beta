@@ -8677,6 +8677,43 @@ do -- Visuals
 
     local NPCCache = {}
     local NPCScanTick = 0
+    -- игроки из сервиса + неймтег модели (метод k.mn): чья голова не подписана ником игрока — тот NPC
+    local ModelSeenAt = {}
+    local PlayerNamesCache = {}
+    local PlayerNamesTick = 0
+    local function PlayerNamesSet()
+        local now = os.clock()
+        if now - PlayerNamesTick < 5 and next(PlayerNamesCache) then return PlayerNamesCache end
+        PlayerNamesTick = now
+        local set = {}
+        pcall(function()
+            for _, pl in Players:GetPlayers() do set[pl.Name] = true end
+        end)
+        PlayerNamesCache = set
+        return set
+    end
+    local function ModelClaimedName(m)
+        local ok, txt = pcall(function()
+            local head = m:FindFirstChild("Head")
+            local nt = head and head:FindFirstChild("Nametag")
+            local tag = nt and nt:FindFirstChild("tag")
+            if tag and tag.Text ~= "" then return tag.Text end
+        end)
+        if ok then return txt end
+    end
+    local function ModelAge(m)
+        local t = ModelSeenAt[m]
+        if not t then
+            t = os.clock()
+            ModelSeenAt[m] = t
+            pcall(function()
+                m.AncestryChanged:Connect(function(_, p)
+                    if p == nil then ModelSeenAt[m] = nil end
+                end)
+            end)
+        end
+        return os.clock() - t
+    end
     local function GetNPCModels()
         local now = os.clock()
         if now - NPCScanTick < 1 and #NPCCache > 0 then return NPCCache end
@@ -8697,9 +8734,14 @@ do -- Visuals
                     if m.Name ~= "Model" then
                         table.insert(out, m)
                     else
-                        -- игроки тоже называются Model: отличаем по сигнатуре шаблона
-                        local signame = IdentifyModel(m)
-                        if signame and signame ~= "Player" then table.insert(out, m) end
+                        -- "Model" с HRP: игрок доказывается сигнатурой Player или ником из игроков
+                        local provenPlayer = false
+                        pcall(function()
+                            if IdentifyModel(m) == "Player" then provenPlayer = true return end
+                            local claimed = ModelClaimedName(m)
+                            if claimed and PlayerNamesSet()[claimed] then provenPlayer = true end
+                        end)
+                        if not provenPlayer then table.insert(out, m) end
                     end
                 end
         end
@@ -8748,16 +8790,24 @@ do -- Visuals
                 end)
             end
         end
-        -- fallback: корневые модели с именами NPC (игроки все называются "Model")
+        -- fallback: корень — NPC среди "Model": у кого неймтег не из игроков (метод k.mn)
         if #out == 0 then
+            local pnames = PlayerNamesSet()
             for _, m in Workspace:GetChildren() do
-                if m:IsA("Model") and m.Name ~= "Model" then
+                if m:IsA("Model") and m ~= Client.Character then
                     if m:FindFirstChild("HumanoidRootPart") and (m:FindFirstChild("Head") or m:FindFirstChild("Humanoid")) then
-                        if m ~= Client.Character then
-                            local rockHit = false
-                            pcall(function() rockHit = m:FindFirstChild("Meshes/rock", true) ~= nil end)
-                            if not rockHit then
+                        local rockHit = false
+                        pcall(function() rockHit = m:FindFirstChild("Meshes/rock", true) ~= nil end)
+                        if not rockHit then
+                            if m.Name ~= "Model" then
                                 table.insert(out, m)
+                            else
+                                local claimed = ModelClaimedName(m)
+                                if claimed ~= nil then
+                                    if not pnames[claimed] then table.insert(out, m) end
+                                elseif ModelAge(m) > 6 then
+                                    table.insert(out, m) -- неймтег так и не прогрузился — не игрок
+                                end
                             end
                         end
                     end
@@ -9341,14 +9391,17 @@ do -- Visuals
                 POIConnected = false
                 AdvancedList = nil
                 AdvancedTried = false
+                ModelSeenAt = {}
+                PlayerNamesCache = {}
+                PlayerNamesTick = 0
             end)
             pcall(function()
                 if HLFolder then HLFolder:Destroy() end
             end)
-            pcall(function()
-                if getgenv().TridentESPLib == espLib then getgenv().TridentESPLib = nil end
-            end)
-            return oldUnload(self, ...)
+            pcall(function() return oldUnload(self, ...) end)
+            getgenv().TridentESPLib = nil
+            getgenv().TridentSettings = nil
+            getgenv().Library = nil
         end
         function Library:Disable(...)
             TridentSettings.Players.Enabled = false
@@ -9597,6 +9650,24 @@ do -- Visuals
                     pcall(function() if m:FindFirstChildWhichIsA("ProximityPrompt", true) then prompt = " PROMPT" end end)
                     add("[" .. cat .. "] " .. m.Name .. prompt .. " kids: " .. table.concat(kids, ", "))
                 end
+            end
+            add("== root HRP nametag audit ==")
+            do
+                local pnames = PlayerNamesSet()
+                local shown, total = 0, 0
+                for _, m in Workspace:GetChildren() do
+                    if m:IsA("Model") and m:FindFirstChild("HumanoidRootPart") then
+                        total += 1
+                        if shown < 25 then
+                            shown += 1
+                            local claimed = ModelClaimedName(m) or "<none>"
+                            local isP = pnames[claimed] and "PLAYER" or "???"
+                            local sig = IdentifyModel(m) or "-"
+                            add("  " .. m.Name .. " nametag=" .. tostring(claimed) .. " " .. isP .. " sig=" .. tostring(sig) .. " age=" .. tostring(math.floor(ModelAge(m))))
+                        end
+                    end
+                end
+                add("hrp total: " .. tostring(total))
             end
             add("== World/POIs ==")
             pcall(function()
