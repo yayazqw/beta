@@ -8135,19 +8135,13 @@ end
 --
 local Window = Library:Window({CloseBind = Enum.KeyCode.RightShift})
 local Rage = Window:CreateTab({Icon = "rbxassetid://18248771514"})
-local AntiAim = Window:CreateTab({Icon = "rbxassetid://15453313321"})
-local Aimbot = Window:CreateTab({Icon = "rbxassetid://15453335745"})
 local Visuals = Window:CreateTab({Icon = "rbxassetid://15453344494"})
 local Settings = Window:CreateTab({Icon = "rbxassetid://15453349637"})
-local Weapons = Window:CreateTab({Icon = "rbxassetid://15453354931"})
 local PlayerList = Window:CreateTab({Icon = "rbxassetid://15453359751"})
 local Configs = Window:CreateTab({Icon = "rbxassetid://15453364412"})
-local Lua = Window:CreateTab({Icon = "rbxassetid://18240049800"})
 local ActualPlayerList
 --
-Window:SetTab(4)
-AntiAim:Section({Fill = true})
-AntiAim:Section({Fill = true, Side = "Right"})
+Window:SetTab(2)
 --
 do -- Rage
     Rage:ImageDropdown({Name = "Weapon type", Flag = "RageWeaponType", Options = {["Global"] = {Icon = "rbxassetid://18657040454", Order = 1}, ["Double Barrel SG"] = {Icon = "rbxassetid://18205706952", Order = 2}, ["Revolver"] = {Icon = "rbxassetid://18205704829", Order = 3}, ["LMG"] = {Icon = "rbxassetid://18205822505", Order = 4}}, Default = "Global"})
@@ -10323,20 +10317,6 @@ do -- Settings
 	end
 end
 --
-do -- Weapons
-	local SkinsSection = Weapons:Section({Name = "Skins", Fill = true})
-	local SkinList = SkinsSection:List({Size = 200})
-	--
-	SkinList:AddValue("Test Skin 1", {Image = "http://www.roblox.com/asset/?id=12206409737", Color = Color3.fromRGB(232, 0, 0), Size = UDim2.fromOffset(5, 5), Position = UDim2.new(0, 11, 0.5, 0)})
-	SkinList:AddValue("Test Skin 2", {Image = "http://www.roblox.com/asset/?id=12206409737", Color = Color3.fromRGB(2, 144, 232), Size = UDim2.fromOffset(5, 5), Position = UDim2.new(0, 11, 0.5, 0)})
-	SkinList:AddValue("Test Skin 3", {Image = "http://www.roblox.com/asset/?id=12206409737", Color = Color3.fromRGB(198, 7, 232), Size = UDim2.fromOffset(5, 5), Position = UDim2.new(0, 11, 0.5, 0)})
-	SkinList:AddValue("Test Skin 4", {Image = "http://www.roblox.com/asset/?id=12206409737", Color = Color3.fromRGB(36, 232, 1), Size = UDim2.fromOffset(5, 5), Position = UDim2.new(0, 11, 0.5, 0)})
-end
---
-do -- Aimbot
-	local AimbotSubSection, AimbotSubSection2 = Aimbot:SubSection({Name = "Category", Options = {"rbxassetid://18686402989", "rbxassetid://18657040454", "rbxassetid://18205704829", "rbxassetid://18205706952", "rbxassetid://18205822505"}})
-end
---
 do -- PlayerList
 	local PlayerSection = PlayerList:Section({Name = "Players", Fill = true})
 	local PlayerAdjustments = PlayerList:Section({Name = "Adjustments", Fill = true, Side = "Right"})
@@ -10371,25 +10351,57 @@ do -- Configs
 		--
 		Library:UpdateConfigList(ConfigList, "Add")
 		--
+		local function CurrentName()
+			local ok, v = pcall(function() return Library.Flags["CurrentConfig"]:Get() end)
+			if ok and type(v) == "string" and v ~= "" then return v end
+		end
 		ConfigSection:Button({Name = "Update config", Callback = function()
-			if Library.Flags["CurrentConfig"]:Get() then
-				writefile("LuckyHub/Configs/" .. Library.Flags["CurrentConfig"]:Get() .. ".cfg", Library:GetConfig())
+			local name = CurrentName()
+			if not name then
+				Library:Notify({Message = "Выбери конфиг в списке", Delay = 3})
+				return
 			end
+			writefile("gamesense/Configs/" .. name .. ".cfg", Library:GetConfig())
+			Library:Notify({Message = "Конфиг сохранён: " .. name, Delay = 3})
 		end})
 		ConfigSection:Button({Name = "Load config", Callback = function()
-			if Library.Flags["CurrentConfig"]:Get() then
-				Library:LoadConfig(readfile("LuckyHub/Configs/" .. Library.Flags["CurrentConfig"]:Get() .. ".cfg"))
+			local name = CurrentName()
+			if not name then
+				Library:Notify({Message = "Выбери конфиг в списке", Delay = 3})
+				return
 			end
+			local path = "gamesense/Configs/" .. name .. ".cfg"
+			if not isfile(path) then
+				Library:Notify({Message = "Файл не найден: " .. name, Delay = 3})
+				return
+			end
+			local ok, err = pcall(function() Library:LoadConfig(readfile(path)) end)
+			Library:Notify({Message = ok and ("Конфиг загружен: " .. name) or ("Ошибка загрузки: " .. tostring(err)), Delay = 4})
 		end})
 		ConfigSection:TextBox({Flag = "ConfigName"})
 		ConfigSection:Button({Name = "Create config", Callback = function()
 			local ConfigName = Library.Flags["ConfigName"]:Get()
 			--
-			if Library.Flags["ConfigName"]:Get() ~= "" and not isfile("LuckyHub/Configs/" .. ConfigName .. ".cfg") then
-			    writefile("LuckyHub/Configs/" .. ConfigName .. ".cfg", Library:GetConfig())
+			if type(ConfigName) == "string" and ConfigName ~= "" and not isfile("gamesense/Configs/" .. ConfigName .. ".cfg") then
+			    writefile("gamesense/Configs/" .. ConfigName .. ".cfg", Library:GetConfig())
 			    --
 			    ConfigList:AddValue(ConfigName)
+			    Library:Notify({Message = "Конфиг создан: " .. ConfigName, Delay = 3})
+			else
+				Library:Notify({Message = "Введи имя или такой уже есть", Delay = 3})
 			end
+		end})
+		ConfigSection:Button({Name = "Delete config", Callback = function()
+			local name = CurrentName()
+			if not name then
+				Library:Notify({Message = "Выбери конфиг в списке", Delay = 3})
+				return
+			end
+			if typeof(delfile) == "function" then
+				pcall(function() delfile("gamesense/Configs/" .. name .. ".cfg") end)
+			end
+			ConfigList:RemoveValue(name)
+			Library:Notify({Message = "Конфиг удалён: " .. name, Delay = 3})
 		end})
 		ConfigSection:Button({Name = "Refresh list", Callback = function()
 			Library:UpdateConfigList(ConfigList, "Remove")
@@ -10404,11 +10416,6 @@ do -- Configs
 		LuaSection:Button({Name = "Unload script"})
 		LuaSection:Button({Name = "Refresh list"})
 	end
-end
---
-do -- Lua
-	local TabA = Lua:Section({Name = "Tab A", Fill = true})
-	local TabB = Lua:Section({Name = "Tab B", Side = "Right", Fill = true})
 end
 --
 do -- Connections
