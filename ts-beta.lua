@@ -8420,7 +8420,12 @@ do -- Visuals
                     or m:FindFirstChild("Humanoid") ~= nil
                     or m:FindFirstChild("Head") ~= nil
             end)
-            if hasChar then table.insert(npcOut, m) return end
+            if hasChar then
+                local slp = false
+                pcall(function() slp = IsSleepingModel(m) end)
+                if not slp then table.insert(npcOut, m) end
+                return
+            end
         end
         if IsCharLike(m) then return end
         -- точная сигнатура шаблона (метод SwimHub)
@@ -8725,6 +8730,7 @@ do -- Visuals
             if not m:IsA("Model") then return end
             if not m:FindFirstChild("HumanoidRootPart") then return end
             if not (m:FindFirstChild("Head") or m:FindFirstChild("Humanoid")) then return end
+            do local slp = false pcall(function() slp = IsSleepingModel(m) end) if slp then return end end
                 -- исключить игроков (они в Workspace.Players)
                 local inPlayers = false
                 pcall(function()
@@ -8797,6 +8803,7 @@ do -- Visuals
             for _, m in Workspace:GetChildren() do
                 if m:IsA("Model") and m ~= Client.Character then
                     if m:FindFirstChild("HumanoidRootPart") and (m:FindFirstChild("Head") or m:FindFirstChild("Humanoid")) then
+                        do local slp = false pcall(function() slp = IsSleepingModel(m) end) if slp then continue end end
                         local rockHit = false
                         pcall(function() rockHit = m:FindFirstChild("Meshes/rock", true) ~= nil end)
                         if not rockHit then
@@ -9670,6 +9677,14 @@ do -- Visuals
                 end
                 add("hrp total: " .. tostring(total))
             end
+            add("== online players ==")
+            do
+                local ns = {}
+                pcall(function()
+                    for _, pl in Players:GetPlayers() do table.insert(ns, pl.Name) end
+                end)
+                add("players(" .. tostring(#ns) .. "): " .. table.concat(ns, ", "))
+            end
             add("== World/POIs ==")
             pcall(function()
                 local pois = Workspace:FindFirstChild("World")
@@ -10288,6 +10303,22 @@ do -- Settings
 			Library.UI.TweenSpeed = Value == (0 or 150) and 0 or NewValue
 		end})
 		SettingsSection:Button({Name = "Unload", Callback = Library.Unload})
+		SettingsSection:Button({Name = "Rejoin server", Callback = function()
+			task.spawn(function()
+				pcall(function()
+					local q = queue_on_teleport or (getgenv and (getgenv().queue_on_teleport or getgenv().queueonteleport))
+					if type(q) == "function" then
+						q("loadstring(game:HttpGet('https://raw.githubusercontent.com/yayazqw/beta/main/ts-beta.lua'))()")
+					end
+				end)
+				local ok = pcall(function()
+					TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, Client)
+				end)
+				if not ok then
+					pcall(function() TeleportService:Teleport(game.PlaceId, Client) end)
+				end
+			end)
+		end})
 		SettingsSection:Button({Name = "Disable all", Callback = Library.Disable})
 	end
 end
