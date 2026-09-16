@@ -8815,7 +8815,7 @@ do -- Visuals
                 end)
             end
         end
-        -- fallback: корень — NPC среди "Model": у кого неймтег не из игроков (метод k.mn)
+        -- fallback: корень — NPC среди "Model": у кого неймтег не из игроков (метод k.mn), без спящих
         if #out == 0 then
             local pnames = PlayerNamesSet()
             for _, m in Workspace:GetChildren() do
@@ -8826,13 +8826,21 @@ do -- Visuals
                         pcall(function() rockHit = m:FindFirstChild("Meshes/rock", true) ~= nil end)
                         if not rockHit then
                             if m.Name ~= "Model" then
-                                table.insert(out, m)
-                            else
+                                -- именованный NPC (Bandit/Scientist и т.д.) — не игрок, имя не "Model"
                                 local claimed = ModelClaimedName(m)
-                                if claimed ~= nil then
-                                    if not pnames[claimed] then table.insert(out, m) end
-                                elseif ModelAge(m) > 6 then
-                                    table.insert(out, m) -- неймтег так и не прогрузился — не игрок
+                                if claimed == nil or not pnames[claimed] then
+                                    table.insert(out, m)
+                                end
+                            else
+                                -- "Model" — игрок только если неймтег совпал с онлайном; без неймтега — считаем игроком, не NPC
+                                local claimed = ModelClaimedName(m)
+                                if claimed ~= nil and not pnames[claimed] then
+                                    -- чужой неймтег — точно NPC/спящий чужак, но спящие уже отрезаны выше
+                                    local isPlayerSig = false
+                                    pcall(function()
+                                        if IdentifyModel(m) == "Player" then isPlayerSig = true end
+                                    end)
+                                    if not isPlayerSig then table.insert(out, m) end
                                 end
                             end
                         end
@@ -9476,28 +9484,9 @@ do -- Visuals
     PlayersSec:Toggle({Name = "Distance [m]", Flag = "ESP_PlayersDist", Default = true, Callback = function(s) TridentSettings.Players.Distance = s end})
     PlayersSec:Toggle({Name = "Weapon", Flag = "ESP_PlayersWeapon", Default = true, Callback = function(s) TridentSettings.Players.Weapon = s end})
     PlayersSec:Toggle({Name = "Show sleepers", Flag = "ESP_ShowSleepers", Default = false, Callback = function(s) TridentSettings.Players.ShowSleepers = s end})
-    PlayersSec:Toggle({Name = "Show local player", Flag = "ESP_ShowLocal", Default = false, Callback = function(s) TridentSettings.Players.ShowLocal = s end})
 
     PlayersSec:Label({Message = "Sleeper color"}):ColorPicker({Default = TridentSettings.Players.SleeperColor, Flag = "ESP_SleeperColor", Callback = function(c)
         TridentSettings.Players.SleeperColor = c
-    end})
-    PlayersSec:Toggle({Name = "Chams (Highlight)", Flag = "ESP_PlayersChams", Default = false, Callback = function(s)
-        TridentSettings.Players.Chams = s
-        if not s then pcall(ClearAllChams) end
-    end}):ColorPicker({Default = TridentSettings.Players.ChamsColor, Flag = "ESP_PlayersChamsCol", Callback = function(c)
-        TridentSettings.Players.ChamsColor = c
-    end})
-    PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
-        TridentSettings.Players.Skeleton = s
-        if not s then pcall(HideAllSkeletons) end
-    end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
-        TridentSettings.Players.SkeletonColor = c
-    end})
-    PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
-        TridentSettings.Players.Skeleton = s
-        if not s then pcall(HideAllSkeletons) end
-    end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
-        TridentSettings.Players.SkeletonColor = c
     end})
 
     -- ----- Ores UI -----
