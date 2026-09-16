@@ -8189,10 +8189,7 @@ end
 local ESP_DrawingOK_Cached = nil
 do -- Visuals
     local VisualsSubSection, VisualsSubSection2, VisualsSubSection3, VisualsSubSection4 = Visuals:SubSection({Name = "Category", Options = {"rbxassetid://18334627891", "rbxassetid://18334630306", "rbxassetid://18334626899", "rbxassetid://18334625304"}})
-    VisualsSubSection3:Section({Side = "Right", Fill = true})
-    VisualsSubSection3:Section({Fill = true})
-    VisualsSubSection4:Section({Side = "Right", Fill = true})
-    VisualsSubSection4:Section({Fill = true})
+    -- 1 PlayerEsp / 2 Entity/Npc ESP / 3 World / 4 Visuals — иконки по порядку Options
 
     -- // ---------- espLibrary check ----------
     local espLib = nil
@@ -9461,11 +9458,13 @@ do -- Visuals
     end
 
     -- // ================= UI =================
-    local PlayersSec = VisualsSubSection:Section({Name = "Players — Trident", Fill = true})
-    local OresSec = VisualsSubSection:Section({Name = "Ores / World", Side = "Right", Fill = true})
+    -- 1 PlayerEsp (VisualsSubSection) / 2 Entity/Npc ESP (VisualsSubSection2) / 3 World (VisualsSubSection3) / 4 Visuals (VisualsSubSection4)
+    local PlayersSec = VisualsSubSection:Section({Name = "Player ESP", Fill = true})
+    local OresSec = VisualsSubSection3:Section({Name = "World — Ores", Fill = true})
+    local OresSec2 = VisualsSubSection3:Section({Name = "World — Backpacks", Side = "Right", Fill = true})
 
-    local NPCSec = VisualsSubSection2:Section({Name = "NPC / Animals", Fill = true})
-    local MiscSec = VisualsSubSection2:Section({Name = "Status / Fix", Side = "Right", Fill = true})
+    local NPCSec = VisualsSubSection2:Section({Name = "Entity / NPC ESP", Fill = true})
+    local MiscSec = VisualsSubSection4:Section({Name = "Visuals", Fill = true})
 
     -- ----- Players UI -----
     PlayersSec:Toggle({Name = "Enable Player ESP", Flag = "ESP_PlayersEnabled", Default = false, Callback = function(s)
@@ -9518,8 +9517,7 @@ do -- Visuals
     OresSec:Toggle({Name = "Nitrate Ore", Flag = "ESP_OreNitrate", Default = true, Callback = function(s) TridentSettings.Ores.Nitrate = s end}):ColorPicker({Default = TridentSettings.Ores.ColorNitrate, Flag = "ESP_OreNitrateCol", Callback = function(c) TridentSettings.Ores.ColorNitrate = c end})
     OresSec:Toggle({Name = "Stone Ore", Flag = "ESP_OreStone", Default = true, Callback = function(s) TridentSettings.Ores.Stone = s end}):ColorPicker({Default = TridentSettings.Ores.ColorStone, Flag = "ESP_OreStoneCol", Callback = function(c) TridentSettings.Ores.ColorStone = c end})
 
-    OresSec:Label({Message = "Backpacks (лут после смерти)"})
-    OresSec:Toggle({Name = "Enable Backpack ESP", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
+    OresSec2:Toggle({Name = "Enable Backpack ESP", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
         TridentSettings.Backpacks.Enabled = s
         if s then task.delay(4, function()
             if not TridentSettings.Backpacks.Enabled then return end
