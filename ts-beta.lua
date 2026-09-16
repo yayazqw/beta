@@ -9458,12 +9458,12 @@ do -- Visuals
     end
 
     -- // ================= UI =================
-    -- 1 PlayerEsp (VisualsSubSection) / 2 Entity/Npc ESP (VisualsSubSection2) / 3 World (VisualsSubSection3) / 4 Visuals (VisualsSubSection4)
+    -- 1 PlayerEsp + NpcEsp (VisualsSubSection) / 2 EntityESP (VisualsSubSection2) / 3 World (VisualsSubSection3) / 4 Visuals (VisualsSubSection4)
     local PlayersSec = VisualsSubSection:Section({Name = "Player ESP", Fill = true})
-    local OresSec = VisualsSubSection3:Section({Name = "World — Ores", Fill = true})
-    local OresSec2 = VisualsSubSection3:Section({Name = "World — Backpacks", Side = "Right", Fill = true})
-
-    local NPCSec = VisualsSubSection2:Section({Name = "Entity / NPC ESP", Fill = true})
+    local NPCSec = VisualsSubSection:Section({Name = "NPC ESP", Side = "Right", Fill = true})
+    local OresSec = VisualsSubSection2:Section({Name = "Entity ESP", Fill = true})
+    local WorldSec = VisualsSubSection3:Section({Name = "World", Fill = true})
+    local OresSec2 = WorldSec -- alias для совместимости (Backpacks внутри World)
     local MiscSec = VisualsSubSection4:Section({Name = "Visuals", Fill = true})
 
     -- ----- Players UI -----
