@@ -9488,6 +9488,12 @@ do -- Visuals
     PlayersSec:Label({Message = "Sleeper color"}):ColorPicker({Default = TridentSettings.Players.SleeperColor, Flag = "ESP_SleeperColor", Callback = function(c)
         TridentSettings.Players.SleeperColor = c
     end})
+    PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
+        TridentSettings.Players.Skeleton = s
+        if not s then pcall(HideAllSkeletons) end
+    end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
+        TridentSettings.Players.SkeletonColor = c
+    end})
 
     -- ----- Ores UI -----
     OresSec:Toggle({Name = "Enable Ore ESP", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
