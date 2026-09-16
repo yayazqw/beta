@@ -48,7 +48,7 @@ local TridentSettings = getgenv().TridentSettings or {
         Box = true,
         Name = true,
         Distance = true,
-        MaxDistance = 1200,
+        MaxDistance = math.huge,
         Iron = true,
         Nitrate = true,
         Stone = true,
@@ -61,7 +61,7 @@ local TridentSettings = getgenv().TridentSettings or {
         Box = true,
         Name = true,
         Distance = true,
-        MaxDistance = 1200,
+        MaxDistance = math.huge,
         Color = Color3.fromRGB(255, 90, 90),
     },
     Backpacks = {
@@ -69,7 +69,7 @@ local TridentSettings = getgenv().TridentSettings or {
         Box = true,
         Name = true,
         Distance = true,
-        MaxDistance = 1200,
+        MaxDistance = math.huge,
         Color = Color3.fromRGB(0, 255, 255),
     },
     Misc = {
@@ -97,19 +97,13 @@ do
     TridentSettings.NPC = TridentSettings.NPC or {}
     TridentSettings.Backpacks = TridentSettings.Backpacks or {}
     TridentSettings.Misc = TridentSettings.Misc or {}
-    do
-        -- миграция: у кого уже лежал старый лимит 1500 — не накрываем, новичкам — бесконечность
-        if typeof(TridentSettings.Players.MaxDistance) ~= "number" or TridentSettings.Players.MaxDistance < 1e5 then
-            TridentSettings.Players.MaxDistance = 1e9
-        end
-        if TridentSettings.Players.InfiniteDistance == nil then
-            TridentSettings.Players.InfiniteDistance = true
-        end
-    end
-    fill(TridentSettings.Players, { Enabled = false, Box = true, Name = true, Distance = true, Weapon = true, ShowSleepers = false, ShowLocal = false, MaxDistance = 1e9, InfiniteDistance = true, Chams = false, ChamsFill = 0.5, Skeleton = false })
-    fill(TridentSettings.Ores, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200, Iron = true, Nitrate = true, Stone = true })
-    fill(TridentSettings.NPC, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200 })
-    fill(TridentSettings.Backpacks, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200 })
+    fill(TridentSettings.Ores, { Enabled = false, Box = true, Name = true, Distance = true, Iron = true, Nitrate = true, Stone = true })
+    TridentSettings.NPC.MaxDistance = math.huge
+    TridentSettings.Backpacks.MaxDistance = math.huge
+    TridentSettings.Players.MaxDistance = math.huge
+    TridentSettings.Players.InfiniteDistance = true
+    fill(TridentSettings.NPC, { Enabled = false, Box = true, Name = true, Distance = true })
+    fill(TridentSettings.Backpacks, { Enabled = false, Box = true, Name = true, Distance = true })
     fill(TridentSettings.Misc, { UseHighlightFallback = true, HideWhenMenuClosed = false })
     if typeof(TridentSettings.Players.Color) ~= "Color3" then TridentSettings.Players.Color = Color3.fromRGB(255, 255, 255) end
     if typeof(TridentSettings.Players.SleeperColor) ~= "Color3" then TridentSettings.Players.SleeperColor = Color3.fromRGB(160, 160, 160) end
@@ -8769,8 +8763,8 @@ do -- Visuals
             if now - NPCDrawingTick > 1 then
                 NPCDrawingTick = now
                 pcall(function()
-                    for _, nm in { "NpcDummy", "Trader", "Scientist", "Guard", "Bandit", "Boss" } do
-                        local v = Workspace:FindFirstChild(nm)
+                    for _, nm in { "NpcDummy", "Trader", "Scientist", "Guard", "Bandit", "Boss", "ScientistNPC", "TraderNPC" } do
+                        local v = Workspace:FindFirstChild(nm) or (Workspace:FindFirstChild("World") and Workspace.World:FindFirstChild(nm))
                         if typeof(v) == "Instance" and v:IsA("Model") and not table.find(out, v) then table.insert(out, v) end
                     end
                 end)
@@ -8856,7 +8850,14 @@ do -- Visuals
                 pcall(function()
                     RescanPOIs(false)
                     for _, m in POINPCs do
-                        if m.Parent and not seenN[m] then table.insert(out, m) end
+                        if m.Parent then
+                            local claimed = ModelClaimedName(m)
+                            local pnames = PlayerNamesSet()
+                            local slp = false
+                            pcall(function() slp = IsSleepingModel(m) end)
+                            local isPlayer = (claimed and pnames[claimed]) or slp
+                            if not isPlayer and not seenN[m] then table.insert(out, m) end
+                        end
                     end
                 end)
             end
@@ -9476,7 +9477,7 @@ do -- Visuals
     PlayersSec:Toggle({Name = "Weapon", Flag = "ESP_PlayersWeapon", Default = true, Callback = function(s) TridentSettings.Players.Weapon = s end})
     PlayersSec:Toggle({Name = "Show sleepers", Flag = "ESP_ShowSleepers", Default = false, Callback = function(s) TridentSettings.Players.ShowSleepers = s end})
     PlayersSec:Toggle({Name = "Show local player", Flag = "ESP_ShowLocal", Default = false, Callback = function(s) TridentSettings.Players.ShowLocal = s end})
-    PlayersSec:Slider({Name = "Max distance", Flag = "ESP_PlayersMaxDist", Min = 100, Max = 5000, Default = 1500, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Players.MaxDistance = v end})
+
     PlayersSec:Label({Message = "Sleeper color"}):ColorPicker({Default = TridentSettings.Players.SleeperColor, Flag = "ESP_SleeperColor", Callback = function(c)
         TridentSettings.Players.SleeperColor = c
     end})
@@ -9492,11 +9493,6 @@ do -- Visuals
     end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
         TridentSettings.Players.SkeletonColor = c
     end})
-    PlayersSec:Toggle({Name = "Infinite distance", Flag = "ESP_PlayersInfinite", Default = true, Callback = function(s)
-        TridentSettings.Players.InfiniteDistance = s
-    end})
-    PlayersSec:Slider({Name = "Max distance", Flag = "ESP_PlayersMaxDist", Min = 100, Max = 8000, Default = 5000, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Players.MaxDistance = v end})
-    -- toggle бесконечной дистанции перерисовывает всех игроков
     PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
         TridentSettings.Players.Skeleton = s
         if not s then pcall(HideAllSkeletons) end
@@ -9526,7 +9522,7 @@ do -- Visuals
     OresSec:Toggle({Name = "Iron Ore", Flag = "ESP_OreIron", Default = true, Callback = function(s) TridentSettings.Ores.Iron = s end}):ColorPicker({Default = TridentSettings.Ores.ColorIron, Flag = "ESP_OreIronCol", Callback = function(c) TridentSettings.Ores.ColorIron = c end})
     OresSec:Toggle({Name = "Nitrate Ore", Flag = "ESP_OreNitrate", Default = true, Callback = function(s) TridentSettings.Ores.Nitrate = s end}):ColorPicker({Default = TridentSettings.Ores.ColorNitrate, Flag = "ESP_OreNitrateCol", Callback = function(c) TridentSettings.Ores.ColorNitrate = c end})
     OresSec:Toggle({Name = "Stone Ore", Flag = "ESP_OreStone", Default = true, Callback = function(s) TridentSettings.Ores.Stone = s end}):ColorPicker({Default = TridentSettings.Ores.ColorStone, Flag = "ESP_OreStoneCol", Callback = function(c) TridentSettings.Ores.ColorStone = c end})
-    OresSec:Slider({Name = "Max distance", Flag = "ESP_OresMaxDist", Min = 100, Max = 5000, Default = 1200, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Ores.MaxDistance = v end})
+
     OresSec:Label({Message = "Backpacks (лут после смерти)"})
     OresSec:Toggle({Name = "Enable Backpack ESP", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
         TridentSettings.Backpacks.Enabled = s
@@ -9547,7 +9543,7 @@ do -- Visuals
     end}):ColorPicker({Default = TridentSettings.Backpacks.Color, Flag = "ESP_BackpacksCol", Callback = function(c)
         TridentSettings.Backpacks.Color = c
     end})
-    OresSec:Slider({Name = "Backpack max dist", Flag = "ESP_BackpacksMaxDist", Min = 100, Max = 5000, Default = 1200, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Backpacks.MaxDistance = v end})
+
 
     -- ----- NPC UI -----
     NPCSec:Toggle({Name = "Enable NPC ESP", Flag = "ESP_NPCEnabled", Default = false, Callback = function(s)
@@ -9568,7 +9564,7 @@ do -- Visuals
     NPCSec:Toggle({Name = "Box", Flag = "ESP_NPCBox", Default = true, Callback = function(s) TridentSettings.NPC.Box = s end})
     NPCSec:Toggle({Name = "Name", Flag = "ESP_NPCName", Default = true, Callback = function(s) TridentSettings.NPC.Name = s end})
     NPCSec:Toggle({Name = "Distance", Flag = "ESP_NPCDist", Default = true, Callback = function(s) TridentSettings.NPC.Distance = s end})
-    NPCSec:Slider({Name = "Max distance", Flag = "ESP_NPCMaxDist", Min = 100, Max = 5000, Default = 1200, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.NPC.MaxDistance = v end})
+
 
     -- ----- Misc / Status -----
     local StatusLabel = MiscSec:Label({Message = "Mode: ..."})
@@ -9949,7 +9945,7 @@ do -- Visuals
                         continue
                     end
                     local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    if not S.Players.InfiniteDistance and dist > S.Players.MaxDistance then
+                    if false then -- infinite
                         local e0 = espLib.playerESP.playerCache[pt]
                         if e0 then e0:hideDrawings() end
                         continue
@@ -10002,7 +9998,7 @@ do -- Visuals
                         continue
                     end
                     local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    if not S.Players.InfiniteDistance and dist > S.Players.MaxDistance then
+                    if false then -- infinite
                         local f0 = FakePlayerByModel[model]
                         if f0 then
                             local e0 = espLib.playerESP.playerCache[f0]
@@ -10077,7 +10073,7 @@ do -- Visuals
                     local hrp = model:FindFirstChild("HumanoidRootPart")
                     if not hrp then return end
                     local d = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    if not S.Players.InfiniteDistance and d > S.Players.MaxDistance then
+                    if false then -- infinite
                         SetHighlight(model, S.Players.Color, false) return
                     end
                     local sleeping = IsSleepingModel(model)
