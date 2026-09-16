@@ -33,7 +33,8 @@ local TridentSettings = getgenv().TridentSettings or {
         Weapon = true,
         ShowSleepers = false,
         ShowLocal = false,
-        MaxDistance = 1500,
+        MaxDistance = 1e9,
+        InfiniteDistance = true,
         Color = Color3.fromRGB(255, 255, 255),
         SleeperColor = Color3.fromRGB(160, 160, 160),
         Chams = false,
@@ -96,7 +97,16 @@ do
     TridentSettings.NPC = TridentSettings.NPC or {}
     TridentSettings.Backpacks = TridentSettings.Backpacks or {}
     TridentSettings.Misc = TridentSettings.Misc or {}
-    fill(TridentSettings.Players, { Enabled = false, Box = true, Name = true, Distance = true, Weapon = true, ShowSleepers = false, ShowLocal = false, MaxDistance = 1500, Chams = false, ChamsFill = 0.5, Skeleton = false })
+    do
+        -- миграция: у кого уже лежал старый лимит 1500 — не накрываем, новичкам — бесконечность
+        if typeof(TridentSettings.Players.MaxDistance) ~= "number" or TridentSettings.Players.MaxDistance < 1e5 then
+            TridentSettings.Players.MaxDistance = 1e9
+        end
+        if TridentSettings.Players.InfiniteDistance == nil then
+            TridentSettings.Players.InfiniteDistance = true
+        end
+    end
+    fill(TridentSettings.Players, { Enabled = false, Box = true, Name = true, Distance = true, Weapon = true, ShowSleepers = false, ShowLocal = false, MaxDistance = 1e9, InfiniteDistance = true, Chams = false, ChamsFill = 0.5, Skeleton = false })
     fill(TridentSettings.Ores, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200, Iron = true, Nitrate = true, Stone = true })
     fill(TridentSettings.NPC, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200 })
     fill(TridentSettings.Backpacks, { Enabled = false, Box = true, Name = true, Distance = true, MaxDistance = 1200 })
@@ -8675,6 +8685,9 @@ do -- Visuals
         return out
     end
 
+    -- // ---------- Изолированный пул NPC (чтобы не трогать drawable игроков) ----------
+    local NPCDrawings = {}
+    local NPCDrawingTick = 0
     local NPCCache = {}
     local NPCScanTick = 0
     -- игроки из сервиса + неймтег модели (метод k.mn): чья голова не подписана ником игрока — тот NPC
@@ -8740,11 +8753,28 @@ do -- Visuals
                         pcall(function()
                             if IdentifyModel(m) == "Player" then provenPlayer = true return end
                             local claimed = ModelClaimedName(m)
-                            if claimed and PlayerNamesSet()[claimed] then provenPlayer = true end
+                            if claimed and PlayerNamesSet()[claimed] then provenPlayer = true return end
+                            -- доп.сигнал: у Player-моделей есть UnionOperation 205/205/205 (ноги), у NPC такого нет
+                            for _, d in m:GetDescendants() do
+                                if d:IsA("UnionOperation") and d.Color == Color3.fromRGB(205, 205, 205) then provenPlayer = true return end
+                            end
                         end)
                         if not provenPlayer then table.insert(out, m) end
                     end
                 end
+        end
+        -- npcDrawing: прямые имена (редкие NPC с уникальным именем, не Model)
+        do
+            local now = os.clock()
+            if now - NPCDrawingTick > 1 then
+                NPCDrawingTick = now
+                pcall(function()
+                    for _, nm in { "NpcDummy", "Trader", "Scientist", "Guard", "Bandit", "Boss" } do
+                        local v = Workspace:FindFirstChild(nm)
+                        if typeof(v) == "Instance" and v:IsA("Model") and not table.find(out, v) then table.insert(out, v) end
+                    end
+                end)
+            end
         end
         if entOk and ent then
             for _, d in ent:GetChildren() do
@@ -9462,6 +9492,17 @@ do -- Visuals
     end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
         TridentSettings.Players.SkeletonColor = c
     end})
+    PlayersSec:Toggle({Name = "Infinite distance", Flag = "ESP_PlayersInfinite", Default = true, Callback = function(s)
+        TridentSettings.Players.InfiniteDistance = s
+    end})
+    PlayersSec:Slider({Name = "Max distance", Flag = "ESP_PlayersMaxDist", Min = 100, Max = 8000, Default = 5000, Decimal = 10, Ending = "m", Callback = function(v) TridentSettings.Players.MaxDistance = v end})
+    -- toggle бесконечной дистанции перерисовывает всех игроков
+    PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
+        TridentSettings.Players.Skeleton = s
+        if not s then pcall(HideAllSkeletons) end
+    end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
+        TridentSettings.Players.SkeletonColor = c
+    end})
 
     -- ----- Ores UI -----
     OresSec:Toggle({Name = "Enable Ore ESP", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
@@ -9908,7 +9949,7 @@ do -- Visuals
                         continue
                     end
                     local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    if dist > S.Players.MaxDistance then
+                    if not S.Players.InfiniteDistance and dist > S.Players.MaxDistance then
                         local e0 = espLib.playerESP.playerCache[pt]
                         if e0 then e0:hideDrawings() end
                         continue
@@ -9961,7 +10002,7 @@ do -- Visuals
                         continue
                     end
                     local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    if dist > S.Players.MaxDistance then
+                    if not S.Players.InfiniteDistance and dist > S.Players.MaxDistance then
                         local f0 = FakePlayerByModel[model]
                         if f0 then
                             local e0 = espLib.playerESP.playerCache[f0]
@@ -10036,7 +10077,7 @@ do -- Visuals
                     local hrp = model:FindFirstChild("HumanoidRootPart")
                     if not hrp then return end
                     local d = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    if d > S.Players.MaxDistance then
+                    if not S.Players.InfiniteDistance and d > S.Players.MaxDistance then
                         SetHighlight(model, S.Players.Color, false) return
                     end
                     local sleeping = IsSleepingModel(model)
