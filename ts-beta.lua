@@ -9495,8 +9495,15 @@ do -- Visuals
     end})
 
     -- ----- Ores UI -----
-    OresSec:Toggle({Name = "Enable", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
+    local BackpackToggle
+    local OreEnable = OresSec:Toggle({Name = "Enable", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
         TridentSettings.Ores.Enabled = s
+        if BackpackToggle then BackpackToggle:SetVisible(s) end
+        if not s and BackpackToggle and BackpackToggle.Get and BackpackToggle:Get() then
+            -- гасим рюкзаки вместе с Entity
+            TridentSettings.Backpacks.Enabled = false
+            pcall(function() BackpackToggle:Set(false) end)
+        end
         if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
         if s then task.delay(7, function()
             if not TridentSettings.Ores.Enabled then return end
@@ -9517,7 +9524,13 @@ do -- Visuals
     OresSec:Toggle({Name = "Nitrate Ore", Flag = "ESP_OreNitrate", Default = true, Callback = function(s) TridentSettings.Ores.Nitrate = s end}):ColorPicker({Default = TridentSettings.Ores.ColorNitrate, Flag = "ESP_OreNitrateCol", Callback = function(c) TridentSettings.Ores.ColorNitrate = c end})
     OresSec:Toggle({Name = "Stone Ore", Flag = "ESP_OreStone", Default = true, Callback = function(s) TridentSettings.Ores.Stone = s end}):ColorPicker({Default = TridentSettings.Ores.ColorStone, Flag = "ESP_OreStoneCol", Callback = function(c) TridentSettings.Ores.ColorStone = c end})
 
-    OresSec:Toggle({Name = "Backpack", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
+    BackpackToggle = OresSec:Toggle({Name = "Backpack", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
+        if not TridentSettings.Ores.Enabled and s then
+            Library:Notify({Message = "Сначала включи Enable в Entity ESP", Delay = 3})
+            TridentSettings.Backpacks.Enabled = false
+            pcall(function() BackpackToggle:Set(false) end)
+            return
+        end
         TridentSettings.Backpacks.Enabled = s
         if s then task.delay(4, function()
             if not TridentSettings.Backpacks.Enabled then return end
@@ -9533,9 +9546,11 @@ do -- Visuals
                 end
             end)
         end
-    end}):ColorPicker({Default = TridentSettings.Backpacks.Color, Flag = "ESP_BackpacksCol", Callback = function(c)
+    end})
+    BackpackToggle:ColorPicker({Default = TridentSettings.Backpacks.Color, Flag = "ESP_BackpacksCol", Callback = function(c)
         TridentSettings.Backpacks.Color = c
     end})
+    BackpackToggle:SetVisible(TridentSettings.Ores.Enabled)
 
 
     -- ----- NPC UI -----
@@ -10245,8 +10260,8 @@ do -- Visuals
             end
         end
 
-        -- ---------- BACKPACKS (лут после смерти) ----------
-        if S.Backpacks.Enabled and espLib and drawOK then
+        -- ---------- BACKPACKS (лут после смерти) — только когда Entity ESP включён ----------
+        if S.Backpacks.Enabled and S.Ores.Enabled and espLib and drawOK then
             pcall(function()
                 for _, model in GetBackpackModels() do
                     if not model.Parent then continue end
@@ -10292,7 +10307,7 @@ do -- Visuals
                         if m and FakeBackpackByModel[m] then e:hideDrawings() end
                     end
                 end)
-            elseif S.Backpacks.Enabled and not drawOK and S.Misc.UseHighlightFallback then
+            elseif S.Backpacks.Enabled and S.Ores.Enabled and not drawOK and S.Misc.UseHighlightFallback then
                 pcall(function()
                     for _, model in GetBackpackModels() do
                         if model.Parent then
