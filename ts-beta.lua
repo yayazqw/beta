@@ -9460,14 +9460,14 @@ do -- Visuals
     -- // ================= UI =================
     -- 1 PlayerEsp + NpcEsp (VisualsSubSection) / 2 EntityESP (VisualsSubSection2) / 3 World (VisualsSubSection3) / 4 Visuals (VisualsSubSection4)
     local PlayersSec = VisualsSubSection:Section({Name = "Player ESP", Fill = true})
-    local NPCSec = VisualsSubSection:Section({Name = "NPC ESP", Side = "Right", Fill = true})
+    local NPCSec = VisualsSubSection:Section({Name = "Npc ESP", Side = "Right", Fill = true})
     local OresSec = VisualsSubSection2:Section({Name = "Entity ESP", Fill = true})
     local WorldSec = VisualsSubSection3:Section({Name = "World", Fill = true})
     local OresSec2 = WorldSec -- alias для совместимости (Backpacks внутри World)
     local MiscSec = VisualsSubSection4:Section({Name = "Visuals", Fill = true})
 
     -- ----- Players UI -----
-    PlayersSec:Toggle({Name = "Enable Player ESP", Flag = "ESP_PlayersEnabled", Default = false, Callback = function(s)
+    PlayersSec:Toggle({Name = "Enable", Flag = "ESP_PlayersEnabled", Default = false, Callback = function(s)
         TridentSettings.Players.Enabled = s
         if not s then
             pcall(function()
@@ -9495,7 +9495,7 @@ do -- Visuals
     end})
 
     -- ----- Ores UI -----
-    OresSec:Toggle({Name = "Enable Ore ESP", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
+    OresSec:Toggle({Name = "Enable", Flag = "ESP_OresEnabled", Default = false, Callback = function(s)
         TridentSettings.Ores.Enabled = s
         if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
         if s then task.delay(7, function()
@@ -9517,7 +9517,7 @@ do -- Visuals
     OresSec:Toggle({Name = "Nitrate Ore", Flag = "ESP_OreNitrate", Default = true, Callback = function(s) TridentSettings.Ores.Nitrate = s end}):ColorPicker({Default = TridentSettings.Ores.ColorNitrate, Flag = "ESP_OreNitrateCol", Callback = function(c) TridentSettings.Ores.ColorNitrate = c end})
     OresSec:Toggle({Name = "Stone Ore", Flag = "ESP_OreStone", Default = true, Callback = function(s) TridentSettings.Ores.Stone = s end}):ColorPicker({Default = TridentSettings.Ores.ColorStone, Flag = "ESP_OreStoneCol", Callback = function(c) TridentSettings.Ores.ColorStone = c end})
 
-    OresSec2:Toggle({Name = "Enable Backpack ESP", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
+    OresSec:Toggle({Name = "Backpack", Flag = "ESP_BackpacksEnabled", Default = false, Callback = function(s)
         TridentSettings.Backpacks.Enabled = s
         if s then task.delay(4, function()
             if not TridentSettings.Backpacks.Enabled then return end
@@ -9539,7 +9539,7 @@ do -- Visuals
 
 
     -- ----- NPC UI -----
-    NPCSec:Toggle({Name = "Enable NPC ESP", Flag = "ESP_NPCEnabled", Default = false, Callback = function(s)
+    NPCSec:Toggle({Name = "Enable", Flag = "ESP_NPCEnabled", Default = false, Callback = function(s)
         TridentSettings.NPC.Enabled = s
         if s then task.spawn(function() pcall(function() RescanPOIs(true) end) end) end
         if s then task.delay(7, function()
