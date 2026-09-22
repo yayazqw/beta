@@ -9479,15 +9479,15 @@ do -- Visuals
         TridentSettings.Players.Color = c
     end})
     PlayersSec:Toggle({Name = "Box", Flag = "ESP_PlayersBox", Default = true, Callback = function(s) TridentSettings.Players.Box = s end})
-    PlayersSec:Toggle({Name = "Name (player/sleeper)", Flag = "ESP_PlayersName", Default = true, Callback = function(s) TridentSettings.Players.Name = s end})
-    PlayersSec:Toggle({Name = "Distance [m]", Flag = "ESP_PlayersDist", Default = true, Callback = function(s) TridentSettings.Players.Distance = s end})
+    PlayersSec:Toggle({Name = "Name", Flag = "ESP_PlayersName", Default = true, Callback = function(s) TridentSettings.Players.Name = s end})
+    PlayersSec:Toggle({Name = "Distance", Flag = "ESP_PlayersDist", Default = true, Callback = function(s) TridentSettings.Players.Distance = s end})
     PlayersSec:Toggle({Name = "Weapon", Flag = "ESP_PlayersWeapon", Default = true, Callback = function(s) TridentSettings.Players.Weapon = s end})
     PlayersSec:Toggle({Name = "Show sleepers", Flag = "ESP_ShowSleepers", Default = false, Callback = function(s) TridentSettings.Players.ShowSleepers = s end})
 
     PlayersSec:Label({Message = "Sleeper color"}):ColorPicker({Default = TridentSettings.Players.SleeperColor, Flag = "ESP_SleeperColor", Callback = function(c)
         TridentSettings.Players.SleeperColor = c
     end})
-    PlayersSec:Toggle({Name = "Skeleton (Lines)", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
+    PlayersSec:Toggle({Name = "Skeleton", Flag = "ESP_PlayersSkeleton", Default = false, Callback = function(s)
         TridentSettings.Players.Skeleton = s
         if not s then pcall(HideAllSkeletons) end
     end}):ColorPicker({Default = TridentSettings.Players.SkeletonColor, Flag = "ESP_PlayersSkeletonCol", Callback = function(c)
